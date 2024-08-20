@@ -35,8 +35,10 @@ fn main() {
 
     // Parse CLI parameters.
     let docopt = docopt::Docopt::new(CLIENT_USAGE).unwrap();
-    let conn_args = CommonArgs::with_docopt(&docopt);
-    let args = ClientArgs::with_docopt(&docopt);
+    // let conn_args = CommonArgs::with_docopt(&docopt);
+    // let args = ClientArgs::with_docopt(&docopt);
+    let conn_args = CommonArgs::default();
+    let args = ClientArgs::default();
 
     match connect(args, conn_args, stdout_sink) {
         Err(ClientError::HandshakeFail) => std::process::exit(-1),

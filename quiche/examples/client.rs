@@ -37,7 +37,8 @@ fn main() {
     let mut buf = [0; 65535];
     let mut out = [0; MAX_DATAGRAM_SIZE];
 
-    let mut args = std::env::args();
+    // let mut args = std::env::args();
+    let mut args = vec!["./client".to_string(),"https://127.0.0.1:58443/".to_string()].into_iter();
 
     let cmd = &args.next().unwrap();
 
@@ -112,7 +113,7 @@ fn main() {
         quiche::connect(url.domain(), &scid, local_addr, peer_addr, &mut config)
             .unwrap();
 
-    info!(
+            println!(
         "connecting to {:} from {:} with scid {}",
         peer_addr,
         socket.local_addr().unwrap(),
@@ -123,14 +124,14 @@ fn main() {
 
     while let Err(e) = socket.send_to(&out[..write], send_info.to) {
         if e.kind() == std::io::ErrorKind::WouldBlock {
-            debug!("send() would block");
+            println!("send() would block");
             continue;
         }
 
         panic!("send() failed: {:?}", e);
     }
 
-    debug!("written {}", write);
+    println!("written {}", write);
 
     let req_start = std::time::Instant::now();
 
@@ -146,7 +147,7 @@ fn main() {
             // has expired, so handle it without attempting to read packets. We
             // will then proceed with the send loop.
             if events.is_empty() {
-                debug!("timed out");
+                println!("timed out");
 
                 conn.on_timeout();
                 break 'read;
@@ -159,7 +160,7 @@ fn main() {
                     // There are no more UDP packets to read, so end the read
                     // loop.
                     if e.kind() == std::io::ErrorKind::WouldBlock {
-                        debug!("recv() would block");
+                        println!("recv() would block");
                         break 'read;
                     }
 
@@ -167,7 +168,7 @@ fn main() {
                 },
             };
 
-            debug!("got {} bytes", len);
+            println!("got {} bytes", len);
 
             let recv_info = quiche::RecvInfo {
                 to: socket.local_addr().unwrap(),
@@ -184,19 +185,19 @@ fn main() {
                 },
             };
 
-            debug!("processed {} bytes", read);
+            println!("processed {} bytes", read);
         }
 
-        debug!("done reading");
+        println!("done reading");
 
         if conn.is_closed() {
-            info!("connection closed, {:?}", conn.stats());
+            println!("connection closed, {:?}", conn.stats());
             break;
         }
 
         // Send an HTTP request as soon as the connection is established.
         if conn.is_established() && !req_sent {
-            info!("sending HTTP request for {}", url.path());
+            println!("sending HTTP request for {}", url.path());
 
             let req = format!("GET {}\r\n", url.path());
             conn.stream_send(HTTP_REQ_STREAM_ID, req.as_bytes(), true)
@@ -208,18 +209,18 @@ fn main() {
         // Process all readable streams.
         for s in conn.readable() {
             while let Ok((read, fin)) = conn.stream_recv(s, &mut buf) {
-                debug!("received {} bytes", read);
+                println!("received {} bytes", read);
 
                 let stream_buf = &buf[..read];
 
-                debug!(
+                println!(
                     "stream {} has {} bytes (fin? {})",
                     s,
                     stream_buf.len(),
                     fin
                 );
 
-                print!("{}", unsafe {
+                println!("{}", unsafe {
                     std::str::from_utf8_unchecked(stream_buf)
                 });
 

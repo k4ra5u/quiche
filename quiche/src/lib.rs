@@ -1355,217 +1355,217 @@ impl Config {
 /// A QUIC connection.
 pub struct Connection {
     /// QUIC wire version used for the connection.
-    version: u32,
+    pub version: u32,
 
     /// Connection Identifiers.
-    ids: cid::ConnectionIdentifiers,
+    pub ids: cid::ConnectionIdentifiers,
 
     /// Unique opaque ID for the connection that can be used for logging.
-    trace_id: String,
+    pub trace_id: String,
 
     /// Packet number spaces.
-    pkt_num_spaces: [packet::PktNumSpace; packet::Epoch::count()],
+    pub pkt_num_spaces: [packet::PktNumSpace; packet::Epoch::count()],
 
     /// Peer's transport parameters.
-    peer_transport_params: TransportParams,
+    pub peer_transport_params: TransportParams,
 
     /// Local transport parameters.
-    local_transport_params: TransportParams,
+    pub local_transport_params: TransportParams,
 
     /// TLS handshake state.
-    handshake: tls::Handshake,
+    pub handshake: tls::Handshake,
 
     /// Serialized TLS session buffer.
     ///
     /// This field is populated when a new session ticket is processed on the
     /// client. On the server this is empty.
-    session: Option<Vec<u8>>,
+    pub session: Option<Vec<u8>>,
 
     /// The configuration for recovery.
-    recovery_config: recovery::RecoveryConfig,
+    pub recovery_config: recovery::RecoveryConfig,
 
     /// The path manager.
-    paths: path::PathMap,
+    pub paths: path::PathMap,
 
     /// PATH_CHALLENGE receive queue max length.
-    path_challenge_recv_max_queue_len: usize,
+    pub path_challenge_recv_max_queue_len: usize,
 
     /// Total number of received PATH_CHALLENGE frames.
-    path_challenge_rx_count: u64,
+    pub path_challenge_rx_count: u64,
 
     /// List of supported application protocols.
-    application_protos: Vec<Vec<u8>>,
+    pub application_protos: Vec<Vec<u8>>,
 
     /// Total number of received packets.
-    recv_count: usize,
+    pub recv_count: usize,
 
     /// Total number of sent packets.
-    sent_count: usize,
+    pub sent_count: usize,
 
     /// Total number of lost packets.
-    lost_count: usize,
+    pub lost_count: usize,
 
     /// Total number of packets sent with data retransmitted.
-    retrans_count: usize,
+    pub retrans_count: usize,
 
     /// Total number of bytes received from the peer.
-    rx_data: u64,
+    pub rx_data: u64,
 
     /// Receiver flow controller.
-    flow_control: flowcontrol::FlowControl,
+    pub flow_control: flowcontrol::FlowControl,
 
     /// Whether we send MAX_DATA frame.
-    almost_full: bool,
+    pub almost_full: bool,
 
     /// Number of stream data bytes that can be buffered.
-    tx_cap: usize,
+    pub tx_cap: usize,
 
     // Number of bytes buffered in the send buffer.
-    tx_buffered: usize,
+    pub tx_buffered: usize,
 
     /// Total number of bytes sent to the peer.
-    tx_data: u64,
+    pub tx_data: u64,
 
     /// Peer's flow control limit for the connection.
-    max_tx_data: u64,
+    pub max_tx_data: u64,
 
     /// Last tx_data before running a full send() loop.
-    last_tx_data: u64,
+    pub last_tx_data: u64,
 
     /// Total number of bytes retransmitted over the connection.
     /// This counts only STREAM and CRYPTO data.
-    stream_retrans_bytes: u64,
+    pub stream_retrans_bytes: u64,
 
     /// Total number of bytes sent over the connection.
-    sent_bytes: u64,
+    pub sent_bytes: u64,
 
     /// Total number of bytes received over the connection.
-    recv_bytes: u64,
+    pub recv_bytes: u64,
 
     /// Total number of bytes sent acked over the connection.
-    acked_bytes: u64,
+    pub acked_bytes: u64,
 
     /// Total number of bytes sent lost over the connection.
-    lost_bytes: u64,
+    pub lost_bytes: u64,
 
     /// Streams map, indexed by stream ID.
-    streams: stream::StreamMap,
+    pub streams: stream::StreamMap,
 
     /// Peer's original destination connection ID. Used by the client to
     /// validate the server's transport parameter.
-    odcid: Option<ConnectionId<'static>>,
+    pub odcid: Option<ConnectionId<'static>>,
 
     /// Peer's retry source connection ID. Used by the client during stateless
     /// retry to validate the server's transport parameter.
-    rscid: Option<ConnectionId<'static>>,
+    pub rscid: Option<ConnectionId<'static>>,
 
     /// Received address verification token.
-    token: Option<Vec<u8>>,
+    pub token: Option<Vec<u8>>,
 
     /// Error code and reason to be sent to the peer in a CONNECTION_CLOSE
     /// frame.
-    local_error: Option<ConnectionError>,
+    pub local_error: Option<ConnectionError>,
 
     /// Error code and reason received from the peer in a CONNECTION_CLOSE
     /// frame.
-    peer_error: Option<ConnectionError>,
+    pub peer_error: Option<ConnectionError>,
 
     /// The connection-level limit at which send blocking occurred.
-    blocked_limit: Option<u64>,
+    pub blocked_limit: Option<u64>,
 
     /// Idle timeout expiration time.
-    idle_timer: Option<time::Instant>,
+    pub idle_timer: Option<time::Instant>,
 
     /// Draining timeout expiration time.
-    draining_timer: Option<time::Instant>,
+    pub draining_timer: Option<time::Instant>,
 
     /// List of raw packets that were received before they could be decrypted.
-    undecryptable_pkts: VecDeque<(Vec<u8>, RecvInfo)>,
+    pub undecryptable_pkts: VecDeque<(Vec<u8>, RecvInfo)>,
 
     /// The negotiated ALPN protocol.
-    alpn: Vec<u8>,
+    pub alpn: Vec<u8>,
 
     /// Whether this is a server-side connection.
-    is_server: bool,
+    pub is_server: bool,
 
     /// Whether the initial secrets have been derived.
-    derived_initial_secrets: bool,
+    pub derived_initial_secrets: bool,
 
     /// Whether a version negotiation packet has already been received. Only
     /// relevant for client connections.
-    did_version_negotiation: bool,
+    pub did_version_negotiation: bool,
 
     /// Whether stateless retry has been performed.
-    did_retry: bool,
+    pub did_retry: bool,
 
     /// Whether the peer already updated its connection ID.
-    got_peer_conn_id: bool,
+    pub got_peer_conn_id: bool,
 
     /// Whether the peer verified our initial address.
-    peer_verified_initial_address: bool,
+    pub peer_verified_initial_address: bool,
 
     /// Whether the peer's transport parameters were parsed.
-    parsed_peer_transport_params: bool,
+    pub parsed_peer_transport_params: bool,
 
     /// Whether the connection handshake has been completed.
-    handshake_completed: bool,
+    pub handshake_completed: bool,
 
     /// Whether the HANDSHAKE_DONE frame has been sent.
-    handshake_done_sent: bool,
+    pub handshake_done_sent: bool,
 
     /// Whether the HANDSHAKE_DONE frame has been acked.
-    handshake_done_acked: bool,
+    pub handshake_done_acked: bool,
 
     /// Whether the connection handshake has been confirmed.
-    handshake_confirmed: bool,
+    pub handshake_confirmed: bool,
 
     /// Key phase bit used for outgoing protected packets.
-    key_phase: bool,
+    pub key_phase: bool,
 
     /// Whether an ack-eliciting packet has been sent since last receiving a
     /// packet.
-    ack_eliciting_sent: bool,
+    pub ack_eliciting_sent: bool,
 
     /// Whether the connection is closed.
-    closed: bool,
+    pub closed: bool,
 
     /// Whether the connection was timed out.
-    timed_out: bool,
+    pub timed_out: bool,
 
     /// Whether to send GREASE.
-    grease: bool,
+    pub grease: bool,
 
     /// TLS keylog writer.
-    keylog: Option<Box<dyn std::io::Write + Send + Sync>>,
+    pub keylog: Option<Box<dyn std::io::Write + Send + Sync>>,
 
     #[cfg(feature = "qlog")]
     qlog: QlogInfo,
 
     /// DATAGRAM queues.
-    dgram_recv_queue: dgram::DatagramQueue,
-    dgram_send_queue: dgram::DatagramQueue,
+    pub dgram_recv_queue: dgram::DatagramQueue,
+    pub dgram_send_queue: dgram::DatagramQueue,
 
     /// Whether to emit DATAGRAM frames in the next packet.
-    emit_dgram: bool,
+    pub emit_dgram: bool,
 
     /// Whether the connection should prevent from reusing destination
     /// Connection IDs when the peer migrates.
-    disable_dcid_reuse: bool,
+    pub disable_dcid_reuse: bool,
 
     /// The number of streams reset by local.
-    reset_stream_local_count: u64,
+    pub reset_stream_local_count: u64,
 
     /// The number of streams stopped by local.
-    stopped_stream_local_count: u64,
+    pub stopped_stream_local_count: u64,
 
     /// The number of streams reset by remote.
-    reset_stream_remote_count: u64,
+    pub reset_stream_remote_count: u64,
 
     /// The number of streams stopped by remote.
-    stopped_stream_remote_count: u64,
+    pub stopped_stream_remote_count: u64,
 
     /// The anti-amplification limit factor.
-    max_amplification_factor: usize,
+    pub max_amplification_factor: usize,
 }
 
 /// Creates a new server-side connection.
@@ -17348,14 +17348,14 @@ mod dgram;
 #[cfg(feature = "ffi")]
 mod ffi;
 mod flowcontrol;
-mod frame;
+pub mod frame;
 pub mod h3;
-mod minmax;
-mod packet;
-mod path;
-mod pmtud;
-mod rand;
-mod ranges;
-mod recovery;
-mod stream;
-mod tls;
+pub mod minmax;
+pub mod packet;
+pub mod path;
+pub mod pmtud;
+pub mod rand;
+pub mod ranges;
+pub mod recovery;
+pub mod stream;
+pub mod tls;

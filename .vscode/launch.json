@@ -1,0 +1,15 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Rust",
+            //"type": "gdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/quiche-client",
+            "args": ["--no-verify", "https://192.168.132.1:58443"],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "sourceLanguages": ["rust"]
+        }
+    ]
+}

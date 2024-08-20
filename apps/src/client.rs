@@ -234,7 +234,7 @@ pub fn connect(
 
     while let Err(e) = socket.send_to(&out[..write], send_info.to) {
         if e.kind() == std::io::ErrorKind::WouldBlock {
-            trace!(
+            println!(
                 "{} -> {}: send() would block",
                 socket.local_addr().unwrap(),
                 send_info.to
@@ -245,7 +245,7 @@ pub fn connect(
         return Err(ClientError::Other(format!("send() failed: {e:?}")));
     }
 
-    trace!("written {}", write);
+    println!("written {}", write);
 
     let app_data_start = std::time::Instant::now();
 
@@ -264,7 +264,7 @@ pub fn connect(
         // has expired, so handle it without attempting to read packets. We
         // will then proceed with the send loop.
         if events.is_empty() {
-            trace!("timed out");
+            println!("timed out");
 
             conn.on_timeout();
         }
@@ -289,7 +289,7 @@ pub fn connect(
                         // There are no more UDP packets to read on this socket.
                         // Process subsequent events.
                         if e.kind() == std::io::ErrorKind::WouldBlock {
-                            trace!("{}: recv() would block", local_addr);
+                            println!("{}: recv() would block", local_addr);
                             break 'read;
                         }
 
@@ -299,7 +299,7 @@ pub fn connect(
                     },
                 };
 
-                trace!("{}: got {} bytes", local_addr, len);
+                println!("{}: got {} bytes", local_addr, len);
 
                 if let Some(target_path) = conn_args.dump_packet_path.as_ref() {
                     let path = format!("{target_path}/{pkt_count}.pkt");
@@ -327,11 +327,11 @@ pub fn connect(
                     },
                 };
 
-                trace!("{}: processed {} bytes", local_addr, read);
+                println!("{}: processed {} bytes", local_addr, read);
             }
         }
 
-        trace!("done reading");
+        println!("done reading");
 
         if conn.is_closed() {
             info!(
@@ -417,6 +417,8 @@ pub fn connect(
 
                 app_proto_selected = true;
             }
+            //break;
+            println!("Application protocol selected");
         }
 
         // If we have an HTTP connection, first issue the requests then
@@ -424,8 +426,10 @@ pub fn connect(
         if let Some(h_conn) = http_conn.as_mut() {
             h_conn.send_requests(&mut conn, &args.dump_response_path);
             h_conn.handle_responses(&mut conn, &mut buf, &app_data_start);
+            //break;
+            println!("HTTP connection established");
         }
-
+       
         // Handle path events.
         while let Some(qe) = conn.path_event_next() {
             match qe {
@@ -517,7 +521,7 @@ pub fn connect(
                         Ok(v) => v,
 
                         Err(quiche::Error::Done) => {
-                            trace!(
+                            println!(
                                 "{} -> {}: done writing",
                                 local_addr,
                                 peer_addr
@@ -538,7 +542,7 @@ pub fn connect(
 
                     if let Err(e) = socket.send_to(&out[..write], send_info.to) {
                         if e.kind() == std::io::ErrorKind::WouldBlock {
-                            trace!(
+                            println!(
                                 "{} -> {}: send() would block",
                                 local_addr,
                                 send_info.to
@@ -552,7 +556,7 @@ pub fn connect(
                         )));
                     }
 
-                    trace!(
+                    println!(
                         "{} -> {}: written {}",
                         local_addr,
                         send_info.to,

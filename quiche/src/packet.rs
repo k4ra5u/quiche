@@ -130,7 +130,7 @@ pub enum Type {
 }
 
 impl Type {
-    pub(crate) fn from_epoch(e: Epoch) -> Type {
+    pub fn from_epoch(e: Epoch) -> Type {
         match e {
             Epoch::Initial => Type::Initial,
 
@@ -140,7 +140,7 @@ impl Type {
         }
     }
 
-    pub(crate) fn to_epoch(self) -> Result<Epoch> {
+    pub fn to_epoch(self) -> Result<Epoch> {
         match self {
             Type::Initial => Ok(Epoch::Initial),
 
@@ -155,7 +155,7 @@ impl Type {
     }
 
     #[cfg(feature = "qlog")]
-    pub(crate) fn to_qlog(self) -> qlog::events::quic::PacketType {
+    pub fn to_qlog(self) -> qlog::events::quic::PacketType {
         match self {
             Type::Initial => qlog::events::quic::PacketType::Initial,
 
@@ -298,11 +298,11 @@ pub struct Header<'a> {
 
     /// The packet number. It's only meaningful after the header protection is
     /// removed.
-    pub(crate) pkt_num: u64,
+    pub pkt_num: u64,
 
     /// The length of the packet number. It's only meaningful after the header
     /// protection is removed.
-    pub(crate) pkt_num_len: usize,
+    pub pkt_num_len: usize,
 
     /// The address verification token of the packet. Only present in `Initial`
     /// and `Retry` packets.
@@ -314,7 +314,7 @@ pub struct Header<'a> {
 
     /// The key phase bit of the packet. It's only meaningful after the header
     /// protection is removed.
-    pub(crate) key_phase: bool,
+    pub key_phase: bool,
 }
 
 impl<'a> Header<'a> {
@@ -343,7 +343,7 @@ impl<'a> Header<'a> {
         Header::from_bytes(&mut b, dcid_len)
     }
 
-    pub(crate) fn from_bytes<'b>(
+    pub fn from_bytes<'b>(
         b: &'b mut octets::OctetsMut, dcid_len: usize,
     ) -> Result<Header<'a>> {
         let first = b.get_u8()?;
@@ -439,7 +439,7 @@ impl<'a> Header<'a> {
         })
     }
 
-    pub(crate) fn to_bytes(&self, out: &mut octets::OctetsMut) -> Result<()> {
+    pub fn to_bytes(&self, out: &mut octets::OctetsMut) -> Result<()> {
         let mut first = 0;
 
         // Encode pkt num length.
