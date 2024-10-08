@@ -418,6 +418,7 @@ use std::collections::HashSet;
 use std::collections::VecDeque;
 
 use smallvec::SmallVec;
+use log::{error, info,debug,warn};
 
 /// The current QUIC wire version.
 pub const PROTOCOL_VERSION: u32 = PROTOCOL_VERSION_V1;
@@ -644,7 +645,7 @@ pub enum WireErrorCode {
 }
 
 impl Error {
-    fn to_wire(self) -> u64 {
+    pub fn to_wire(self) -> u64 {
         match self {
             Error::Done => WireErrorCode::NoError as u64,
             Error::InvalidFrame => WireErrorCode::FrameEncodingError as u64,
@@ -2288,11 +2289,13 @@ impl Connection {
                 Err(Error::Done) => {
                     // If the packet can't be processed or decrypted, check if
                     // it's a stateless reset.
-                    if self.is_stateless_reset(&buf[len - left..len]) {
-                        trace!("{} packet is a stateless reset", self.trace_id);
+                    /* PATCH */
+                    // Do not mark close
+                    // if self.is_stateless_reset(&buf[len - left..len]) {
+                    //     trace!("{} packet is a stateless reset", self.trace_id);
 
-                        self.mark_closed();
-                    }
+                    //     self.mark_closed();
+                    // }
 
                     left
                 },
@@ -2300,8 +2303,11 @@ impl Connection {
                 Err(e) => {
                     // In case of error processing the incoming packet, close
                     // the connection.
-                    self.close(false, e.to_wire(), b"").ok();
-                    return Err(e);
+                    /* PATCH */
+                    // Do not close conn
+                    // self.close(false, e.to_wire(), b"").ok();
+                    // return Err(e);
+                    left
                 },
             };
 
@@ -2317,7 +2323,7 @@ impl Connection {
         Ok(done)
     }
 
-    fn process_undecrypted_0rtt_packets(&mut self) -> Result<()> {
+    pub fn process_undecrypted_0rtt_packets(&mut self) -> Result<()> {
         // Process previously undecryptable 0-RTT packets if the decryption key
         // is now available.
         if self.pkt_num_spaces[packet::Epoch::Application]
@@ -2337,7 +2343,7 @@ impl Connection {
     }
 
     /// Returns true if a QUIC packet is a stateless reset.
-    fn is_stateless_reset(&self, buf: &[u8]) -> bool {
+    pub fn is_stateless_reset(&self, buf: &[u8]) -> bool {
         // If the packet is too small, then we just throw it away.
         let buf_len = buf.len();
         if buf_len < 21 {
@@ -2374,7 +2380,7 @@ impl Connection {
     /// On error, an error other than [`Done`] is returned.
     ///
     /// [`Done`]: enum.Error.html#variant.Done
-    fn recv_single(
+    pub fn recv_single(
         &mut self, buf: &mut [u8], info: &RecvInfo, recv_pid: Option<usize>,
     ) -> Result<usize> {
         let now = time::Instant::now();
@@ -6328,6 +6334,8 @@ impl Connection {
     /// [`on_timeout()`]: struct.Connection.html#method.on_timeout
     /// [`is_closed()`]: struct.Connection.html#method.is_closed
     pub fn close(&mut self, app: bool, err: u64, reason: &[u8]) -> Result<()> {
+        /* PATCH */
+        error!("closing connection ");
         if self.is_closed() || self.is_draining() {
             return Err(Error::Done);
         }
@@ -7322,17 +7330,43 @@ impl Connection {
                     return Err(Error::InvalidState);
                 }
 
-                if let Some(pid) = self.ids.retire_scid(seq_num, &hdr.dcid)? {
-                    let path = self.paths.get_mut(pid)?;
+                /* PATCH */
+                // if retire_scid return err , then do not handle this rc frame
+                // if let Some(pid) = self.ids.retire_scid(seq_num, &hdr.dcid)? {
+                //     let path = self.paths.get_mut(pid)?;
 
-                    // Maybe we already linked a new SCID to that path.
-                    if path.active_scid_seq == Some(seq_num) {
-                        // XXX: We do not remove unused paths now, we instead
-                        // wait until we need to maintain more paths than the
-                        // host is willing to.
-                        path.active_scid_seq = None;
+                //     // Maybe we already linked a new SCID to that path.
+                //     if path.active_scid_seq == Some(seq_num) {
+                //         // XXX: We do not remove unused paths now, we instead
+                //         // wait until we need to maintain more paths than the
+                //         // host is willing to.
+                //         path.active_scid_seq = None;
+                //     }
+                // }
+                let res = match self.ids.retire_scid(seq_num, &hdr.dcid) {
+                    Ok(Some(pid)) => {
+                        let path = self.paths.get_mut(pid)?;
+
+                        // Maybe we already linked a new SCID to that path.
+                        if path.active_scid_seq == Some(seq_num) {
+                            // XXX: We do not remove unused paths now, we instead
+                            // wait until we need to maintain more paths than the
+                            // host is willing to.
+                            path.active_scid_seq = None;
+                        }
                     }
-                }
+                    Ok(None) => {
+
+                        debug!("retire_scid returns None So nothing to do");
+                    }
+                    Err(e) =>
+                    {
+                        debug!("retire_scid returns err:{:?} So nothing to do",e);
+                        
+                    }
+
+
+                };
             },
 
             frame::Frame::PathChallenge { data } => {
@@ -7779,7 +7813,7 @@ impl Connection {
     }
 
     // Marks the connection as closed and does any related tidyup.
-    fn mark_closed(&mut self) {
+    pub fn mark_closed(&mut self) {
         #[cfg(feature = "qlog")]
         {
             let cc = match (self.is_established(), self.timed_out, &self.peer_error, &self.local_error) {

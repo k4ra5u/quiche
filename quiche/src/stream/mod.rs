@@ -908,28 +908,30 @@ impl ExactSizeIterator for StreamIter {
 /// Finally, `off` is the starting offset for the specific `RangeBuf` within the
 /// stream the buffer belongs to.
 #[derive(Clone, Debug, Default, Eq)]
+/* PATCH */
+// change private to pub
 pub struct RangeBuf {
     /// The internal buffer holding the data.
     ///
     /// To avoid needless allocations when a RangeBuf is split, this field is
     /// reference-counted and can be shared between multiple RangeBuf objects,
     /// and sliced using the `start` and `len` values.
-    data: Arc<Vec<u8>>,
+    pub data: Arc<Vec<u8>>,
 
     /// The initial offset within the internal buffer.
-    start: usize,
+    pub start: usize,
 
     /// The current offset within the internal buffer.
-    pos: usize,
+    pub pos: usize,
 
     /// The number of bytes in the buffer, from the initial offset.
-    len: usize,
+    pub len: usize,
 
     /// The offset of the buffer within a stream.
-    off: u64,
+    pub off: u64,
 
     /// Whether this contains the final byte in the stream.
-    fin: bool,
+    pub fin: bool,
 }
 
 impl RangeBuf {

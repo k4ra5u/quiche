@@ -668,7 +668,12 @@ impl ConnectionIdentifiers {
             if e.cid == *scid {
                 Some((e.seq, e.path_id))
             } else {
-                None
+                /* PATCH */
+                // It is hard to let scids match my fuzzing scids
+                // So if we can not get one scid, just use oldest
+                // None
+                let ee = self.scids.get_oldest();
+                Some((ee.seq, ee.path_id))
             }
         })
     }
