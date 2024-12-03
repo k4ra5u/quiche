@@ -7436,6 +7436,7 @@ impl Connection {
             },
 
             frame::Frame::DatagramHeader { .. } => unreachable!(),
+            frame::Frame::Others { data } => unreachable!(),
         }
 
         Ok(())

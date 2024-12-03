@@ -184,6 +184,9 @@ pub enum Frame {
     DatagramHeader {
         length: usize,
     },
+    Others {
+        data: Vec<u8>,
+    }
 }
 
 impl Frame {
@@ -330,6 +333,9 @@ impl Frame {
             0x1e => Frame::HandshakeDone,
 
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
+            0xff => Frame::Others {
+                data: b.get_bytes_with_varint_length()?.to_vec(),
+                },
 
             _ => return Err(Error::InvalidFrame),
         };
@@ -593,6 +599,11 @@ impl Frame {
             },
 
             Frame::DatagramHeader { .. } => (),
+            Frame::Others { data } => {
+                b.put_varint(0xff)?;
+                b.put_varint(data.len() as u64 )?;
+                b.put_bytes(data.as_ref())?;
+            },
         }
 
         Ok(before - b.cap())
@@ -807,6 +818,9 @@ impl Frame {
                 1 + // frame type
                 2 + // length, always encode as 2-byte varint
                 *length // data
+            },
+            Frame::Others { data } => {
+                data.len()
             },
         }
     }
@@ -1198,6 +1212,12 @@ impl std::fmt::Debug for Frame {
 
             Frame::DatagramHeader { length } => {
                 write!(f, "DATAGRAM len={length}")?;
+            },
+            Frame::Others { data } =>{
+                write!(
+                    f,
+                    "Othee reason={data:x?}"
+                )?;
             },
         }
 
