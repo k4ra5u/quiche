@@ -8,6 +8,7 @@ use libc::c_int;
 // statically allocate it. While it is not often modified upstream, it needs to
 // be kept in sync.
 #[repr(C)]
+#[derive(Clone)]
 struct EVP_AEAD_CTX {
     aead: libc::uintptr_t,
     opaque: [u8; 580],
@@ -148,7 +149,7 @@ fn make_aead_ctx(alg: Algorithm, key: &[u8]) -> Result<EVP_AEAD_CTX> {
 
     Ok(ctx)
 }
-
+#[derive(Clone)]
 pub(crate) struct PacketKey {
     ctx: EVP_AEAD_CTX,
     nonce: Vec<u8>,

@@ -382,6 +382,7 @@
 #[macro_use]
 extern crate log;
 
+use frame::Frame;
 #[cfg(feature = "qlog")]
 use qlog::events::connectivity::ConnectivityEventType;
 #[cfg(feature = "qlog")]
@@ -402,6 +403,8 @@ use qlog::events::EventImportance;
 use qlog::events::EventType;
 #[cfg(feature = "qlog")]
 use qlog::events::RawInfo;
+use serde::Deserialize;
+use serde::Serialize;
 use stream::StreamPriorityKey;
 
 use std::cmp;
@@ -707,6 +710,12 @@ impl std::convert::From<octets::BufferTooShortError> for Error {
     fn from(_err: octets::BufferTooShortError) -> Self {
         Error::BufferTooShort
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq,Serialize,Deserialize)]
+pub struct FrameWithPkn {
+    pub pkn: u64,
+    pub frame: Frame,
 }
 
 /// Ancillary information about incoming packets.
@@ -2236,6 +2245,98 @@ impl Connection {
     /// }
     /// # Ok::<(), quiche::Error>(())
     /// ```
+    pub fn recv2(&mut self, buf: &mut [u8], info: RecvInfo) -> Result<(usize,Vec<FrameWithPkn>)> {
+        let mut recv_frames: Vec<FrameWithPkn>  = Vec::new();
+        let len = buf.len();
+
+        if len == 0 {
+            return Err(Error::BufferTooShort);
+        }
+
+        let recv_pid = self.paths.path_id_from_addrs(&(info.to, info.from));
+
+        if let Some(recv_pid) = recv_pid {
+            let recv_path = self.paths.get_mut(recv_pid)?;
+
+            // Keep track of how many bytes we received from the client, so we
+            // can limit bytes sent back before address validation, to a
+            // multiple of this. The limit needs to be increased early on, so
+            // that if there is an error there is enough credit to send a
+            // CONNECTION_CLOSE.
+            //
+            // It doesn't matter if the packets received were valid or not, we
+            // only need to track the total amount of bytes received.
+            //
+            // Note that we also need to limit the number of bytes we sent on a
+            // path if we are not the host that initiated its usage.
+            if self.is_server && !recv_path.verified_peer_address {
+                recv_path.max_send_bytes += len * self.max_amplification_factor;
+            }
+        } else if !self.is_server {
+            // If a client receives packets from an unknown server address,
+            // the client MUST discard these packets.
+            trace!(
+                "{} client received packet from unknown address {:?}, dropping",
+                self.trace_id,
+                info,
+            );
+
+            return Ok((len,recv_frames));
+        }
+
+        let mut done = 0;
+        let mut left = len;
+
+        // Process coalesced packets.
+        while left > 0 {
+            let (read,read_frames) = match self.recv_single2(
+                &mut buf[len - left..len],
+                &info,
+                recv_pid,
+            ) {
+                Ok((u,v)) => (u,v),
+
+                Err(Error::Done) => {
+                    // If the packet can't be processed or decrypted, check if
+                    // it's a stateless reset.
+                    /* PATCH */
+                    // Do not mark close
+                    // if self.is_stateless_reset(&buf[len - left..len]) {
+                    //     trace!("{} packet is a stateless reset", self.trace_id);
+
+                    //     self.mark_closed();
+                    // }
+
+                    (left,Vec::new())
+                },
+
+                Err(e) => {
+                    // In case of error processing the incoming packet, close
+                    // the connection.
+                    /* PATCH */
+                    // Do not close conn
+                    // self.close(false, e.to_wire(), b"").ok();
+                    // return Err(e);
+                    (left,Vec::new())
+                },
+            };
+            for frame in read_frames {
+                recv_frames.push(frame.clone());
+            }
+
+            done += read;
+            left -= read;
+        }
+
+        // Even though the packet was previously "accepted", it
+        // should be safe to forward the error, as it also comes
+        // from the `recv()` method.
+        self.process_undecrypted_0rtt_packets()?;
+
+        Ok((done,recv_frames.clone()))
+    }
+ 
+
     pub fn recv(&mut self, buf: &mut [u8], info: RecvInfo) -> Result<usize> {
         let len = buf.len();
 
@@ -2380,6 +2481,820 @@ impl Connection {
     /// On error, an error other than [`Done`] is returned.
     ///
     /// [`Done`]: enum.Error.html#variant.Done
+    /// 
+    pub fn recv_single2(
+        &mut self, buf: &mut [u8], info: &RecvInfo, recv_pid: Option<usize>,
+    ) -> Result<(usize,Vec<FrameWithPkn>)> {
+        let now = time::Instant::now();
+
+        let mut recv_frames: Vec<FrameWithPkn> = Vec::new();
+
+        if buf.is_empty() {
+            return Err(Error::Done);
+        }
+
+        if self.is_closed() || self.is_draining() {
+            return Err(Error::Done);
+        }
+
+        let is_closing = self.local_error.is_some();
+
+        if is_closing {
+            return Err(Error::Done);
+        }
+
+        let buf_len = buf.len();
+
+        let mut b = octets::OctetsMut::with_slice(buf);
+
+        let mut hdr = Header::from_bytes(&mut b, self.source_id().len())
+            .map_err(|e| {
+                drop_pkt_on_err(
+                    e,
+                    self.recv_count,
+                    self.is_server,
+                    &self.trace_id,
+                )
+            })?;
+
+        if hdr.ty == packet::Type::VersionNegotiation {
+            // Version negotiation packets can only be sent by the server.
+            if self.is_server {
+                return Err(Error::Done);
+            }
+
+            // Ignore duplicate version negotiation.
+            if self.did_version_negotiation {
+                return Err(Error::Done);
+            }
+
+            // Ignore version negotiation if any other packet has already been
+            // successfully processed.
+            if self.recv_count > 0 {
+                return Err(Error::Done);
+            }
+
+            if hdr.dcid != self.source_id() {
+                return Err(Error::Done);
+            }
+
+            if hdr.scid != self.destination_id() {
+                return Err(Error::Done);
+            }
+
+            trace!("{} rx pkt {:?}", self.trace_id, hdr);
+
+            let versions = hdr.versions.ok_or(Error::Done)?;
+
+            // Ignore version negotiation if the version already selected is
+            // listed.
+            if versions.iter().any(|&v| v == self.version) {
+                return Err(Error::Done);
+            }
+
+            let supported_versions =
+                versions.iter().filter(|&&v| version_is_supported(v));
+
+            let mut found_version = false;
+
+            for &v in supported_versions {
+                found_version = true;
+
+                // The final version takes precedence over draft ones.
+                if v == PROTOCOL_VERSION_V1 {
+                    self.version = v;
+                    break;
+                }
+
+                self.version = cmp::max(self.version, v);
+            }
+
+            if !found_version {
+                // We don't support any of the versions offered.
+                //
+                // While a man-in-the-middle attacker might be able to
+                // inject a version negotiation packet that triggers this
+                // failure, the window of opportunity is very small and
+                // this error is quite useful for debugging, so don't just
+                // ignore the packet.
+                return Err(Error::UnknownVersion);
+            }
+
+            self.did_version_negotiation = true;
+
+            // Derive Initial secrets based on the new version.
+            let (aead_open, aead_seal) = crypto::derive_initial_key_material(
+                &self.destination_id(),
+                self.version,
+                self.is_server,
+            )?;
+
+            // Reset connection state to force sending another Initial packet.
+            self.drop_epoch_state(packet::Epoch::Initial, now);
+            self.got_peer_conn_id = false;
+            self.handshake.clear()?;
+
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_open =
+                Some(aead_open);
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_seal =
+                Some(aead_seal);
+
+            self.handshake
+                .use_legacy_codepoint(self.version != PROTOCOL_VERSION_V1);
+
+            // Encode transport parameters again, as the new version might be
+            // using a different format.
+            self.encode_transport_params()?;
+
+            return Err(Error::Done);
+        }
+
+        if hdr.ty == packet::Type::Retry {
+            // Retry packets can only be sent by the server.
+            if self.is_server {
+                return Err(Error::Done);
+            }
+
+            // Ignore duplicate retry.
+            if self.did_retry {
+                return Err(Error::Done);
+            }
+
+            // Check if Retry packet is valid.
+            if packet::verify_retry_integrity(
+                &b,
+                &self.destination_id(),
+                self.version,
+            )
+            .is_err()
+            {
+                return Err(Error::Done);
+            }
+
+            trace!("{} rx pkt {:?}", self.trace_id, hdr);
+
+            self.token = hdr.token;
+            self.did_retry = true;
+
+            // Remember peer's new connection ID.
+            self.odcid = Some(self.destination_id().into_owned());
+
+            self.set_initial_dcid(
+                hdr.scid.clone(),
+                None,
+                self.paths.get_active_path_id()?,
+            )?;
+
+            self.rscid = Some(self.destination_id().into_owned());
+
+            // Derive Initial secrets using the new connection ID.
+            let (aead_open, aead_seal) = crypto::derive_initial_key_material(
+                &hdr.scid,
+                self.version,
+                self.is_server,
+            )?;
+
+            // Reset connection state to force sending another Initial packet.
+            self.drop_epoch_state(packet::Epoch::Initial, now);
+            self.got_peer_conn_id = false;
+            self.handshake.clear()?;
+
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_open =
+                Some(aead_open);
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_seal =
+                Some(aead_seal);
+
+            return Err(Error::Done);
+        }
+
+        if self.is_server && !self.did_version_negotiation {
+            if !version_is_supported(hdr.version) {
+                return Err(Error::UnknownVersion);
+            }
+
+            self.version = hdr.version;
+            self.did_version_negotiation = true;
+
+            self.handshake
+                .use_legacy_codepoint(self.version != PROTOCOL_VERSION_V1);
+
+            // Encode transport parameters again, as the new version might be
+            // using a different format.
+            self.encode_transport_params()?;
+        }
+
+        if hdr.ty != packet::Type::Short && hdr.version != self.version {
+            // At this point version negotiation was already performed, so
+            // ignore packets that don't match the connection's version.
+            return Err(Error::Done);
+        }
+
+        // Long header packets have an explicit payload length, but short
+        // packets don't so just use the remaining capacity in the buffer.
+        let payload_len = if hdr.ty == packet::Type::Short {
+            b.cap()
+        } else {
+            b.get_varint().map_err(|e| {
+                drop_pkt_on_err(
+                    e.into(),
+                    self.recv_count,
+                    self.is_server,
+                    &self.trace_id,
+                )
+            })? as usize
+        };
+
+        // Make sure the buffer is same or larger than an explicit
+        // payload length.
+        if payload_len > b.cap() {
+            return Err(drop_pkt_on_err(
+                Error::InvalidPacket,
+                self.recv_count,
+                self.is_server,
+                &self.trace_id,
+            ));
+        }
+
+        // Derive initial secrets on the server.
+        if !self.derived_initial_secrets {
+            let (aead_open, aead_seal) = crypto::derive_initial_key_material(
+                &hdr.dcid,
+                self.version,
+                self.is_server,
+            )?;
+
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_open =
+                Some(aead_open);
+            self.pkt_num_spaces[packet::Epoch::Initial].crypto_seal =
+                Some(aead_seal);
+
+            self.derived_initial_secrets = true;
+        }
+
+        // Select packet number space epoch based on the received packet's type.
+        let epoch = hdr.ty.to_epoch()?;
+
+        // Select AEAD context used to open incoming packet.
+        let aead = if hdr.ty == packet::Type::ZeroRTT {
+            // Only use 0-RTT key if incoming packet is 0-RTT.
+            self.pkt_num_spaces[epoch].crypto_0rtt_open.as_ref()
+        } else {
+            // Otherwise use the packet number space's main key.
+            self.pkt_num_spaces[epoch].crypto_open.as_ref()
+        };
+
+        // Finally, discard packet if no usable key is available.
+        let mut aead = match aead {
+            Some(v) => v,
+
+            None => {
+                if hdr.ty == packet::Type::ZeroRTT &&
+                    self.undecryptable_pkts.len() < MAX_UNDECRYPTABLE_PACKETS &&
+                    !self.is_established()
+                {
+                    // Buffer 0-RTT packets when the required read key is not
+                    // available yet, and process them later.
+                    //
+                    // TODO: in the future we might want to buffer other types
+                    // of undecryptable packets as well.
+                    let pkt_len = b.off() + payload_len;
+                    let pkt = (b.buf()[..pkt_len]).to_vec();
+
+                    self.undecryptable_pkts.push_back((pkt, *info));
+                    return Ok((pkt_len,recv_frames));
+                }
+
+                let e = drop_pkt_on_err(
+                    Error::CryptoFail,
+                    self.recv_count,
+                    self.is_server,
+                    &self.trace_id,
+                );
+
+                return Err(e);
+            },
+        };
+
+        let aead_tag_len = aead.alg().tag_len();
+
+        packet::decrypt_hdr(&mut b, &mut hdr, aead).map_err(|e| {
+            drop_pkt_on_err(e, self.recv_count, self.is_server, &self.trace_id)
+        })?;
+
+        let pn = packet::decode_pkt_num(
+            self.pkt_num_spaces[epoch].largest_rx_pkt_num,
+            hdr.pkt_num,
+            hdr.pkt_num_len,
+        );
+
+        let pn_len = hdr.pkt_num_len;
+
+        trace!(
+            "{} rx pkt {:?} len={} pn={} {}",
+            self.trace_id,
+            hdr,
+            payload_len,
+            pn,
+            AddrTupleFmt(info.from, info.to)
+        );
+
+        #[cfg(feature = "qlog")]
+        let mut qlog_frames = vec![];
+
+        // Check for key update.
+        let mut aead_next = None;
+
+        if self.handshake_confirmed &&
+            hdr.ty != Type::ZeroRTT &&
+            hdr.key_phase != self.key_phase
+        {
+            // Check if this packet arrived before key update.
+            if let Some(key_update) = self.pkt_num_spaces[epoch]
+                .key_update
+                .as_ref()
+                .and_then(|key_update| {
+                    (pn < key_update.pn_on_update).then_some(key_update)
+                })
+            {
+                aead = &key_update.crypto_open;
+            } else {
+                trace!("{} peer-initiated key update", self.trace_id);
+
+                aead_next = Some((
+                    self.pkt_num_spaces[epoch]
+                        .crypto_open
+                        .as_ref()
+                        .unwrap()
+                        .derive_next_packet_key()?,
+                    self.pkt_num_spaces[epoch]
+                        .crypto_seal
+                        .as_ref()
+                        .unwrap()
+                        .derive_next_packet_key()?,
+                ));
+
+                // `aead_next` is always `Some()` at this point, so the `unwrap()`
+                // will never fail.
+                aead = &aead_next.as_ref().unwrap().0;
+            }
+        }
+
+        let mut payload = packet::decrypt_pkt(
+            &mut b,
+            pn,
+            pn_len,
+            payload_len,
+            aead,
+        )
+        .map_err(|e| {
+            drop_pkt_on_err(e, self.recv_count, self.is_server, &self.trace_id)
+        })?;
+
+        if self.pkt_num_spaces[epoch].recv_pkt_num.contains(pn) {
+            trace!("{} ignored duplicate packet {}", self.trace_id, pn);
+            return Err(Error::Done);
+        }
+
+        // Packets with no frames are invalid.
+        if payload.cap() == 0 {
+            return Err(Error::InvalidPacket);
+        }
+
+        // Now that we decrypted the packet, let's see if we can map it to an
+        // existing path.
+        let recv_pid = if hdr.ty == packet::Type::Short && self.got_peer_conn_id {
+            let pkt_dcid = ConnectionId::from_ref(&hdr.dcid);
+            self.get_or_create_recv_path_id(recv_pid, &pkt_dcid, buf_len, info)?
+        } else {
+            // During handshake, we are on the initial path.
+            self.paths.get_active_path_id()?
+        };
+
+        // The key update is verified once a packet is successfully decrypted
+        // using the new keys.
+        if let Some((open_next, seal_next)) = aead_next {
+            if !self.pkt_num_spaces[epoch]
+                .key_update
+                .as_ref()
+                .map_or(true, |prev| prev.update_acked)
+            {
+                // Peer has updated keys twice without awaiting confirmation.
+                return Err(Error::KeyUpdate);
+            }
+
+            trace!("{} key update verified", self.trace_id);
+
+            let _ = self.pkt_num_spaces[epoch].crypto_seal.replace(seal_next);
+
+            let open_prev = self.pkt_num_spaces[epoch]
+                .crypto_open
+                .replace(open_next)
+                .unwrap();
+
+            let recv_path = self.paths.get_mut(recv_pid)?;
+
+            self.pkt_num_spaces[epoch].key_update = Some(packet::KeyUpdate {
+                crypto_open: open_prev,
+                pn_on_update: pn,
+                update_acked: false,
+                timer: now + (recv_path.recovery.pto() * 3),
+            });
+
+            self.key_phase = !self.key_phase;
+
+            qlog_with_type!(QLOG_PACKET_RX, self.qlog, q, {
+                let trigger = Some(
+                    qlog::events::security::KeyUpdateOrRetiredTrigger::RemoteUpdate,
+                );
+
+                let ev_data_client =
+                    EventData::KeyUpdated(qlog::events::security::KeyUpdated {
+                        key_type:
+                            qlog::events::security::KeyType::Client1RttSecret,
+                        old: None,
+                        new: String::new(),
+                        generation: None,
+                        trigger: trigger.clone(),
+                    });
+
+                q.add_event_data_with_instant(ev_data_client, now).ok();
+
+                let ev_data_server =
+                    EventData::KeyUpdated(qlog::events::security::KeyUpdated {
+                        key_type:
+                            qlog::events::security::KeyType::Server1RttSecret,
+                        old: None,
+                        new: String::new(),
+                        generation: None,
+                        trigger,
+                    });
+
+                q.add_event_data_with_instant(ev_data_server, now).ok();
+            });
+        }
+
+        if !self.is_server && !self.got_peer_conn_id {
+            if self.odcid.is_none() {
+                self.odcid = Some(self.destination_id().into_owned());
+            }
+
+            // Replace the randomly generated destination connection ID with
+            // the one supplied by the server.
+            self.set_initial_dcid(
+                hdr.scid.clone(),
+                self.peer_transport_params.stateless_reset_token,
+                recv_pid,
+            )?;
+
+            self.got_peer_conn_id = true;
+        }
+
+        if self.is_server && !self.got_peer_conn_id {
+            self.set_initial_dcid(hdr.scid.clone(), None, recv_pid)?;
+
+            if !self.did_retry {
+                self.local_transport_params
+                    .original_destination_connection_id =
+                    Some(hdr.dcid.to_vec().into());
+
+                self.encode_transport_params()?;
+            }
+
+            self.got_peer_conn_id = true;
+        }
+
+        // To avoid sending an ACK in response to an ACK-only packet, we need
+        // to keep track of whether this packet contains any frame other than
+        // ACK and PADDING.
+        let mut ack_elicited = false;
+
+        // Process packet payload. If a frame cannot be processed, store the
+        // error and stop further packet processing.
+        let mut frame_processing_err = None;
+
+        // To know if the peer migrated the connection, we need to keep track
+        // whether this is a non-probing packet.
+        let mut probing = true;
+
+        // Process packet payload.
+        while payload.cap() > 0 {
+            let frame = frame::Frame::from_bytes(&mut payload, hdr.ty)?;
+            recv_frames.push(FrameWithPkn {
+                frame: frame.clone(),
+                pkn: pn,
+            });
+
+            qlog_with_type!(QLOG_PACKET_RX, self.qlog, _q, {
+                qlog_frames.push(frame.to_qlog());
+            });
+
+            if frame.ack_eliciting() {
+                ack_elicited = true;
+            }
+
+            if !frame.probing() {
+                probing = false;
+            }
+
+            if let Err(e) = self.process_frame(frame, &hdr, recv_pid, epoch, now)
+            {
+                frame_processing_err = Some(e);
+                break;
+            }
+        }
+
+        qlog_with_type!(QLOG_PACKET_RX, self.qlog, q, {
+            let packet_size = b.len();
+
+            let qlog_pkt_hdr = qlog::events::quic::PacketHeader::with_type(
+                hdr.ty.to_qlog(),
+                Some(pn),
+                Some(hdr.version),
+                Some(&hdr.scid),
+                Some(&hdr.dcid),
+            );
+
+            let qlog_raw_info = RawInfo {
+                length: Some(packet_size as u64),
+                payload_length: Some(payload_len as u64),
+                data: None,
+            };
+
+            let ev_data =
+                EventData::PacketReceived(qlog::events::quic::PacketReceived {
+                    header: qlog_pkt_hdr,
+                    frames: Some(qlog_frames),
+                    is_coalesced: None,
+                    retry_token: None,
+                    stateless_reset_token: None,
+                    supported_versions: None,
+                    raw: Some(qlog_raw_info),
+                    datagram_id: None,
+                    trigger: None,
+                });
+
+            q.add_event_data_with_instant(ev_data, now).ok();
+        });
+
+        qlog_with_type!(QLOG_PACKET_RX, self.qlog, q, {
+            let recv_path = self.paths.get_mut(recv_pid)?;
+            if let Some(ev_data) = recv_path.recovery.maybe_qlog() {
+                q.add_event_data_with_instant(ev_data, now).ok();
+            }
+        });
+
+        if let Some(e) = frame_processing_err {
+            // Any frame error is terminal, so now just return.
+            return Err(e);
+        }
+
+        // Only log the remote transport parameters once the connection is
+        // established (i.e. after frames have been fully parsed) and only
+        // once per connection.
+        if self.is_established() {
+            qlog_with_type!(QLOG_PARAMS_SET, self.qlog, q, {
+                if !self.qlog.logged_peer_params {
+                    let ev_data = self
+                        .peer_transport_params
+                        .to_qlog(TransportOwner::Remote, self.handshake.cipher());
+
+                    q.add_event_data_with_instant(ev_data, now).ok();
+
+                    self.qlog.logged_peer_params = true;
+                }
+            });
+        }
+
+        // Following flag used to upgrade datagram size, if probe is successful.
+        let mut pmtud_probe = false;
+
+        // Process acked frames. Note that several packets from several paths
+        // might have been acked by the received packet.
+        for (_, p) in self.paths.iter_mut() {
+            for acked in p.recovery.get_acked_frames(epoch) {
+                match acked {
+                    frame::Frame::Ping {
+                        mtu_probe: Some(mtu_probe),
+                    } => {
+                        let pmtud_next = p.pmtud.get_current();
+                        p.pmtud.set_current(cmp::max(pmtud_next, mtu_probe));
+
+                        // Stop sending path MTU probes after successful probe.
+                        p.pmtud.should_probe(false);
+                        pmtud_probe = true;
+
+                        trace!(
+                            "{} pmtud acked; pmtu size {:?}",
+                            self.trace_id,
+                            p.pmtud.get_current()
+                        );
+                    },
+
+                    frame::Frame::ACK { ranges, .. } => {
+                        // Stop acknowledging packets less than or equal to the
+                        // largest acknowledged in the sent ACK frame that, in
+                        // turn, got acked.
+                        if let Some(largest_acked) = ranges.last() {
+                            self.pkt_num_spaces[epoch]
+                                .recv_pkt_need_ack
+                                .remove_until(largest_acked);
+                        }
+                    },
+
+                    frame::Frame::CryptoHeader { offset, length } => {
+                        self.pkt_num_spaces[epoch]
+                            .crypto_stream
+                            .send
+                            .ack_and_drop(offset, length);
+                    },
+
+                    frame::Frame::StreamHeader {
+                        stream_id,
+                        offset,
+                        length,
+                        ..
+                    } => {
+                        let stream = match self.streams.get_mut(stream_id) {
+                            Some(v) => v,
+
+                            None => continue,
+                        };
+
+                        stream.send.ack_and_drop(offset, length);
+
+                        self.tx_buffered =
+                            self.tx_buffered.saturating_sub(length);
+
+                        qlog_with_type!(QLOG_DATA_MV, self.qlog, q, {
+                            let ev_data = EventData::DataMoved(
+                                qlog::events::quic::DataMoved {
+                                    stream_id: Some(stream_id),
+                                    offset: Some(offset),
+                                    length: Some(length as u64),
+                                    from: Some(DataRecipient::Transport),
+                                    to: Some(DataRecipient::Dropped),
+                                    raw: None,
+                                },
+                            );
+
+                            q.add_event_data_with_instant(ev_data, now).ok();
+                        });
+
+                        // Only collect the stream if it is complete and not
+                        // readable. If it is readable, it will get collected when
+                        // stream_recv() is used.
+                        if stream.is_complete() && !stream.is_readable() {
+                            let local = stream.local;
+                            self.streams.collect(stream_id, local);
+                        }
+                    },
+
+                    frame::Frame::HandshakeDone => {
+                        // Explicitly set this to true, so that if the frame was
+                        // already scheduled for retransmission, it is aborted.
+                        self.handshake_done_sent = true;
+
+                        self.handshake_done_acked = true;
+                    },
+
+                    frame::Frame::ResetStream { stream_id, .. } => {
+                        let stream = match self.streams.get_mut(stream_id) {
+                            Some(v) => v,
+
+                            None => continue,
+                        };
+
+                        // Only collect the stream if it is complete and not
+                        // readable. If it is readable, it will get collected when
+                        // stream_recv() is used.
+                        if stream.is_complete() && !stream.is_readable() {
+                            let local = stream.local;
+                            self.streams.collect(stream_id, local);
+                        }
+                    },
+
+                    _ => (),
+                }
+            }
+
+            // Update max datagram send size with newly acked probe size.
+            if pmtud_probe {
+                trace!(
+                    "{} updating pmtu {:?}",
+                    p.pmtud.get_current(),
+                    self.trace_id
+                );
+
+                qlog_with_type!(
+                    EventType::ConnectivityEventType(
+                        ConnectivityEventType::MtuUpdated
+                    ),
+                    self.qlog,
+                    q,
+                    {
+                        let pmtu_data = EventData::MtuUpdated(
+                            qlog::events::connectivity::MtuUpdated {
+                                old: Some(p.recovery.max_datagram_size() as u16),
+                                new: p.pmtud.get_current() as u16,
+                                done: Some(pmtud_probe),
+                            },
+                        );
+
+                        q.add_event_data_with_instant(pmtu_data, now).ok();
+                    }
+                );
+
+                p.recovery
+                    .pmtud_update_max_datagram_size(p.pmtud.get_current());
+            }
+        }
+
+        // Now that we processed all the frames, if there is a path that has no
+        // Destination CID, try to allocate one.
+        let no_dcid = self
+            .paths
+            .iter_mut()
+            .filter(|(_, p)| p.active_dcid_seq.is_none());
+
+        for (pid, p) in no_dcid {
+            if self.ids.zero_length_dcid() {
+                p.active_dcid_seq = Some(0);
+                continue;
+            }
+
+            let dcid_seq = match self.ids.lowest_available_dcid_seq() {
+                Some(seq) => seq,
+                None => break,
+            };
+
+            self.ids.link_dcid_to_path_id(dcid_seq, pid)?;
+
+            p.active_dcid_seq = Some(dcid_seq);
+        }
+
+        // We only record the time of arrival of the largest packet number
+        // that still needs to be acked, to be used for ACK delay calculation.
+        if self.pkt_num_spaces[epoch].recv_pkt_need_ack.last() < Some(pn) {
+            self.pkt_num_spaces[epoch].largest_rx_pkt_time = now;
+        }
+
+        self.pkt_num_spaces[epoch].recv_pkt_num.insert(pn);
+
+        self.pkt_num_spaces[epoch].recv_pkt_need_ack.push_item(pn);
+
+        self.pkt_num_spaces[epoch].ack_elicited =
+            cmp::max(self.pkt_num_spaces[epoch].ack_elicited, ack_elicited);
+
+        self.pkt_num_spaces[epoch].largest_rx_pkt_num =
+            cmp::max(self.pkt_num_spaces[epoch].largest_rx_pkt_num, pn);
+
+        if !probing {
+            self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num = cmp::max(
+                self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num,
+                pn,
+            );
+
+            // Did the peer migrated to another path?
+            let active_path_id = self.paths.get_active_path_id()?;
+
+            if self.is_server &&
+                recv_pid != active_path_id &&
+                self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num == pn
+            {
+                self.on_peer_migrated(recv_pid, self.disable_dcid_reuse, now)?;
+            }
+        }
+
+        if let Some(idle_timeout) = self.idle_timeout() {
+            self.idle_timer = Some(now + idle_timeout);
+        }
+
+        // Update send capacity.
+        self.update_tx_cap();
+
+        self.recv_count += 1;
+        self.paths.get_mut(recv_pid)?.recv_count += 1;
+
+        let read = b.off() + aead_tag_len;
+
+        self.recv_bytes += read as u64;
+        self.paths.get_mut(recv_pid)?.recv_bytes += read as u64;
+
+        // An Handshake packet has been received from the client and has been
+        // successfully processed, so we can drop the initial state and consider
+        // the client's address to be verified.
+        if self.is_server && hdr.ty == packet::Type::Handshake {
+            self.drop_epoch_state(packet::Epoch::Initial, now);
+
+            self.paths.get_mut(recv_pid)?.verified_peer_address = true;
+        }
+
+        self.ack_eliciting_sent = false;
+
+        Ok((read,recv_frames))
+    }
+
+
     pub fn recv_single(
         &mut self, buf: &mut [u8], info: &RecvInfo, recv_pid: Option<usize>,
     ) -> Result<usize> {
@@ -17377,12 +18292,12 @@ pub use crate::recovery::congestion::CongestionControlAlgorithm;
 
 pub use crate::stream::StreamIter;
 
-mod cid;
-mod crypto;
-mod dgram;
+pub mod cid;
+pub mod crypto;
+pub mod dgram;
 #[cfg(feature = "ffi")]
-mod ffi;
-mod flowcontrol;
+pub mod ffi;
+pub mod flowcontrol;
 pub mod frame;
 pub mod h3;
 pub mod minmax;

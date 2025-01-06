@@ -25,9 +25,9 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::convert::TryInto;
-
 use crate::Error;
 use crate::Result;
+use serde::{Serialize, Deserialize};
 
 use crate::packet;
 use crate::ranges;
@@ -47,14 +47,14 @@ pub const MAX_DGRAM_OVERHEAD: usize = 2;
 pub const MAX_STREAM_OVERHEAD: usize = 12;
 pub const MAX_STREAM_SIZE: u64 = 1 << 62;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq,Serialize, Deserialize)]
 pub struct EcnCounts {
     pub ect0_count: u64,
     pub ect1_count: u64,
     pub ecn_ce_count: u64,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq,Serialize, Deserialize)]
 pub enum Frame {
     Padding {
         len: usize,

@@ -33,11 +33,13 @@ use std::collections::Bound;
 use either::Either;
 use smallvec::SmallVec;
 
+use serde::{Deserialize, Serialize};
+
 const MAX_INLINE_CAPACITY: usize = 4;
 const MIN_TO_INLINE: usize = 2;
 
 /// A sorted collection of non overlapping [`u64`] ranges
-#[derive(Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd,Serialize,Deserialize)]
 pub enum RangeSet {
     Inline(InlineRangeSet),
     BTree(BTreeRangeSet),
@@ -45,7 +47,7 @@ pub enum RangeSet {
 
 /// A [`RangeSet`] variant backed by a [`SmallVec`] that is capable of storing
 /// [`MAX_INLINE_CAPACITY`] of ranges without allocation
-#[derive(Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd,Serialize,Deserialize)]
 pub struct InlineRangeSet {
     inner: SmallVec<[(u64, u64); MAX_INLINE_CAPACITY]>,
     capacity: usize,
@@ -53,7 +55,7 @@ pub struct InlineRangeSet {
 
 /// A [`RangeSet`] variant backed by a [`BTreeMap`] that is capable of storing
 /// an arbitrary number of ranges
-#[derive(Clone, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, PartialEq, Eq, PartialOrd,Serialize,Deserialize)]
 pub struct BTreeRangeSet {
     inner: BTreeMap<u64, u64>,
     capacity: usize,
