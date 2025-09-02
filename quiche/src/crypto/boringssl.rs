@@ -12,6 +12,7 @@ use libc::c_void;
 // statically allocate it. While it is not often modified upstream, it needs to
 // be kept in sync.
 #[repr(C)]
+#[derive(Clone)]
 struct EVP_AEAD_CTX {
     aead: libc::uintptr_t,
     opaque: [u8; 580],
@@ -37,7 +38,7 @@ impl Algorithm {
         }
     }
 }
-
+#[derive(Clone)]
 pub(crate) struct PacketKey {
     alg: Algorithm,
 

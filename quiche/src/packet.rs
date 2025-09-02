@@ -139,7 +139,8 @@ pub enum Type {
 }
 
 impl Type {
-    pub(crate) fn from_epoch(e: Epoch) -> Type {
+    /* PATCH */
+    pub fn from_epoch(e: Epoch) -> Type {
         match e {
             Epoch::Initial => Type::Initial,
 
@@ -149,7 +150,8 @@ impl Type {
         }
     }
 
-    pub(crate) fn to_epoch(self) -> Result<Epoch> {
+    /* PATCH */
+    pub fn to_epoch(self) -> Result<Epoch> {
         match self {
             Type::Initial => Ok(Epoch::Initial),
 
@@ -163,8 +165,9 @@ impl Type {
         }
     }
 
+    /* PATCH */
     #[cfg(feature = "qlog")]
-    pub(crate) fn to_qlog(self) -> qlog::events::quic::PacketType {
+    pub fn to_qlog(self) -> qlog::events::quic::PacketType {
         match self {
             Type::Initial => qlog::events::quic::PacketType::Initial,
 
@@ -290,6 +293,7 @@ impl std::fmt::Debug for ConnectionId<'_> {
     }
 }
 
+/* PATCH */
 /// A QUIC packet's header.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Header<'a> {
@@ -307,11 +311,11 @@ pub struct Header<'a> {
 
     /// The packet number. It's only meaningful after the header protection is
     /// removed.
-    pub(crate) pkt_num: u64,
+    pub pkt_num: u64,
 
     /// The length of the packet number. It's only meaningful after the header
     /// protection is removed.
-    pub(crate) pkt_num_len: usize,
+    pub pkt_num_len: usize,
 
     /// The address verification token of the packet. Only present in `Initial`
     /// and `Retry` packets.
@@ -323,7 +327,7 @@ pub struct Header<'a> {
 
     /// The key phase bit of the packet. It's only meaningful after the header
     /// protection is removed.
-    pub(crate) key_phase: bool,
+    pub key_phase: bool,
 }
 
 impl<'a> Header<'a> {
@@ -525,10 +529,11 @@ impl<'a> Header<'a> {
         Ok(())
     }
 
+    /* PATCH */
     /// Returns true if the packet has a long header.
     ///
     /// The `b` parameter represents the first byte of the QUIC header.
-    fn is_long(b: u8) -> bool {
+    pub fn is_long(b: u8) -> bool {
         b & FORM_BIT != 0
     }
 }

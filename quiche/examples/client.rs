@@ -37,7 +37,8 @@ fn main() {
     let mut buf = [0; 65535];
     let mut out = [0; MAX_DATAGRAM_SIZE];
 
-    let mut args = std::env::args();
+    // let mut args = std::env::args();
+    let mut args = vec!["./client".to_string(),"https://127.0.0.1:58443/".to_string()].into_iter();
 
     let cmd = &args.next().unwrap();
 

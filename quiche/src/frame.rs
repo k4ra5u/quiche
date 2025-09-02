@@ -28,6 +28,8 @@ use std::convert::TryInto;
 
 use crate::Error;
 use crate::Result;
+/* PATCH */
+use serde::{Serialize, Deserialize};
 
 use crate::packet;
 use crate::range_buf::RangeBuf;
@@ -47,14 +49,15 @@ pub const MAX_DGRAM_OVERHEAD: usize = 2;
 pub const MAX_STREAM_OVERHEAD: usize = 12;
 pub const MAX_STREAM_SIZE: u64 = 1 << 62;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/* PATCH */
+#[derive(Clone, Debug, PartialEq, Eq,Serialize, Deserialize)]
 pub struct EcnCounts {
-    ect0_count: u64,
-    ect1_count: u64,
-    ecn_ce_count: u64,
+    pub ect0_count: u64,
+    pub ect1_count: u64,
+    pub ecn_ce_count: u64,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq,Serialize, Deserialize)]
 pub enum Frame {
     Padding {
         len: usize,
@@ -184,6 +187,10 @@ pub enum Frame {
     DatagramHeader {
         length: usize,
     },
+    /* PATCH */
+    Others {
+        data: Vec<u8>,
+    }
 }
 
 impl Frame {
@@ -330,6 +337,10 @@ impl Frame {
             0x1e => Frame::HandshakeDone,
 
             0x30 | 0x31 => parse_datagram_frame(frame_type, b)?,
+            /* PATCH */
+            0xff => Frame::Others {
+                data: b.get_bytes_with_varint_length()?.to_vec(),
+                },
 
             _ => return Err(Error::InvalidFrame),
         };
@@ -593,6 +604,12 @@ impl Frame {
             },
 
             Frame::DatagramHeader { .. } => (),
+            /* PATCH */
+            Frame::Others { data } => {
+                b.put_varint(0xff)?;
+                b.put_varint(data.len() as u64 )?;
+                b.put_bytes(data.as_ref())?;
+            },
         }
 
         Ok(before - b.cap())
@@ -807,6 +824,10 @@ impl Frame {
                 1 + // frame type
                 2 + // length, always encode as 2-byte varint
                 *length // data
+            },
+            /* PATCH */
+            Frame::Others { data } => {
+                data.len()
             },
         }
     }
@@ -1033,6 +1054,12 @@ impl Frame {
                 length: *length as u64,
                 raw: None,
             },
+            /* PATCH */
+            Frame::Others { data } => QuicFrame::Unknown { 
+                raw_frame_type: 0xff,
+                frame_type_value: None,
+                raw: None,
+            },
         }
     }
 }
@@ -1199,6 +1226,13 @@ impl std::fmt::Debug for Frame {
 
             Frame::DatagramHeader { length } => {
                 write!(f, "DATAGRAM len={length}")?;
+            },
+            /* PATCH */
+            Frame::Others { data } =>{
+                write!(
+                    f,
+                    "Others data={data:x?}"
+                )?;
             },
         }
 

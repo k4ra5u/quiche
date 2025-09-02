@@ -29,6 +29,11 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
+/* PATCH */
+use std::fmt;
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::ser::SerializeStruct;
+use serde::de::{self, Visitor, SeqAccess, MapAccess};
 
 /// Buffer holding data at a specific offset.
 ///
@@ -54,22 +59,22 @@ where
     /// To avoid needless allocations when a RangeBuf is split, this field
     /// should be reference-counted so it can be shared between multiple
     /// RangeBuf objects, and sliced using the `start` and `len` values.
-    pub(crate) data: F::Buf,
+    pub data: F::Buf,
 
     /// The initial offset within the internal buffer.
-    pub(crate) start: usize,
+    pub start: usize,
 
     /// The current offset within the internal buffer.
-    pub(crate) pos: usize,
+    pub pos: usize,
 
     /// The number of bytes in the buffer, from the initial offset.
-    pub(crate) len: usize,
+    pub len: usize,
 
     /// The offset of the buffer within a stream.
-    pub(crate) off: u64,
+    pub off: u64,
 
     /// Whether this contains the final byte in the stream.
-    pub(crate) fin: bool,
+    pub fin: bool,
 
     _bf: PhantomData<F>,
 }
@@ -231,5 +236,142 @@ impl<F: BufFactory> Eq for RangeBuf<F> {}
 impl<F: BufFactory> PartialEq for RangeBuf<F> {
     fn eq(&self, other: &RangeBuf<F>) -> bool {
         self.off == other.off
+    }
+}
+
+/* PATCH */
+// add Serialize and Deserialize for RangeBuf
+impl Serialize for RangeBuf {
+    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<<S as Serializer>::Ok, <S as Serializer>::Error> {
+        let mut state = serializer.serialize_struct("RangeBuf", 6)?;
+        let mut data = self.data.as_ref().to_vec();
+        state.serialize_field("data", &data)?;
+        state.serialize_field("start", &self.start)?;
+        state.serialize_field("pos", &self.pos)?;
+        state.serialize_field("len", &self.len)?;
+        state.serialize_field("off", &self.off)?;
+        state.serialize_field("fin", &self.fin)?;
+        state.serialize_field("_bf", &self._bf)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for RangeBuf {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<RangeBuf, <D as Deserializer<'de>>::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field { Data, Start, Pos, Len, Off, Fin ,BF}
+
+        struct RangeBufVisitor;
+
+        impl<'de> Visitor<'de> for RangeBufVisitor {
+            type Value = RangeBuf;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct RangeBuf")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> std::result::Result<RangeBuf, <V as SeqAccess<'de>>::Error>
+            where
+                V: SeqAccess<'de>,
+            {
+                let data: Vec<u8> = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                let start = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                let pos = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                let len = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                let off = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
+                let fin = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
+                Ok(RangeBuf {
+                    data: DefaultBufFactory::buf_from_slice(&data),
+                    start,
+                    pos,
+                    len,
+                    off,
+                    fin,
+                    _bf: Default::default(),
+                })
+            }
+
+            fn visit_map<V>(self, mut map: V) -> std::result::Result<RangeBuf, <V as MapAccess<'de>>::Error>
+            where
+                V: MapAccess<'de>,
+            {
+                let mut data: Option<Vec<u8>> = None;
+                let mut start = None;
+                let mut pos = None;
+                let mut len = None;
+                let mut off = None;
+                let mut fin = None;
+                let mut _bf = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Data => {
+                            if data.is_some() {
+                                return Err(de::Error::duplicate_field("data"));
+                            }
+                            data = Some(map.next_value()?);
+                        }
+                        Field::Start => {
+                            if start.is_some() {
+                                return Err(de::Error::duplicate_field("start"));
+                            }
+                            start = Some(map.next_value()?);
+                        }
+                        Field::Pos => {
+                            if pos.is_some() {
+                                return Err(de::Error::duplicate_field("pos"));
+                            }
+                            pos = Some(map.next_value()?);
+                        }
+                        Field::Len => {
+                            if len.is_some() {
+                                return Err(de::Error::duplicate_field("len"));
+                            }
+                            len = Some(map.next_value()?);
+                        }
+                        Field::Off => {
+                            if off.is_some() {
+                                return Err(de::Error::duplicate_field("off"));
+                            }
+                            off = Some(map.next_value()?);
+                        }
+                        Field::Fin => {
+                            if fin.is_some() {
+                                return Err(de::Error::duplicate_field("fin"));
+                            }
+                            fin = Some(map.next_value()?);
+                        }
+                        Field::BF => {
+                            if _bf.is_some() {
+                                return Err(de::Error::duplicate_field("_bf"));
+                            }
+                            _bf = Some(map.next_value()?);
+                        }
+                    }
+                }
+                let data = data.ok_or_else(|| de::Error::missing_field("data"))?;
+                let start = start.ok_or_else(|| de::Error::missing_field("start"))?;
+                let pos = pos.ok_or_else(|| de::Error::missing_field("pos"))?;
+                let len = len.ok_or_else(|| de::Error::missing_field("len"))?;
+                let off = off.ok_or_else(|| de::Error::missing_field("off"))?;
+                let fin = fin.ok_or_else(|| de::Error::missing_field("fin"))?;
+                let _bf = _bf.ok_or_else(|| de::Error::missing_field("_bf"))?;
+                Ok(RangeBuf {
+                    data: DefaultBufFactory::buf_from_slice(&data),
+                    start,
+                    pos,
+                    len,
+                    off,
+                    fin,
+                    _bf: Default::default(),
+                })
+            }
+        }
+
+        const FIELDS: &'static [&'static str] = &["data", "start", "pos", "len", "off", "fin","_bf"];
+        deserializer.deserialize_struct("RangeBuf", FIELDS, RangeBufVisitor)
     }
 }
