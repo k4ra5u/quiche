@@ -317,9 +317,9 @@ impl Path {
     /// Returns whether the path can be used to send non-probing packets.
     #[inline]
     pub fn usable(&self) -> bool {
-        self.active() ||
-            (self.state == PathState::Validated &&
-                self.active_dcid_seq.is_some())
+        self.active()
+            || (self.state == PathState::Validated
+                && self.active_dcid_seq.is_some())
     }
 
     /// Returns whether the path is unused.
@@ -381,13 +381,13 @@ impl Path {
             return false;
         };
 
-        (hs_confirmed && hs_done) &&
-            pmtud.get_probe_size() > pmtud.get_current_mtu() &&
-            self.recovery.cwnd_available() > pmtud.get_probe_size() &&
-            out_len >= pmtud.get_probe_size() &&
-            pmtud.should_probe() &&
-            !is_closing &&
-            frames_empty
+        (hs_confirmed && hs_done)
+            && pmtud.get_probe_size() > pmtud.get_current_mtu()
+            && self.recovery.cwnd_available() > pmtud.get_probe_size()
+            && out_len >= pmtud.get_probe_size()
+            && pmtud.should_probe()
+            && !is_closing
+            && frames_empty
     }
 
     pub fn on_challenge_sent(&mut self) {
@@ -506,8 +506,8 @@ impl Path {
             // As a server, if requesting a challenge is not
             // possible due to the amplification attack, declare the
             // validation as failed.
-            if self.probing_lost >= crate::MAX_PROBING_TIMEOUTS ||
-                (is_server && self.max_send_bytes < crate::MIN_PROBING_SIZE)
+            if self.probing_lost >= crate::MAX_PROBING_TIMEOUTS
+                || (is_server && self.max_send_bytes < crate::MIN_PROBING_SIZE)
             {
                 self.on_failed_validation();
             } else {
@@ -590,6 +590,7 @@ impl ExactSizeIterator for SocketAddrIter {
 }
 
 /// All path-related information.
+#[derive(Debug)]
 pub struct PathMap {
     /// The paths of the connection. Each of them has an internal identifier
     /// that is used by `addrs_to_paths` and `ConnectionEntry`.

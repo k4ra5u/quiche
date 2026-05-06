@@ -40,9 +40,9 @@ impl Pmtud {
     /// Checks there are no probes in flight, that a PMTU has not been
     /// found, and that the minimum supported MTU has not been reached.
     pub fn should_probe(&self) -> bool {
-        !self.in_flight &&
-            self.pmtu.is_none() &&
-            self.smallest_failed_probe_size != Some(MIN_CLIENT_INITIAL_LEN)
+        !self.in_flight
+            && self.pmtu.is_none()
+            && self.smallest_failed_probe_size != Some(MIN_CLIENT_INITIAL_LEN)
     }
 
     /// Sets the PMTUD probe size.
@@ -104,8 +104,9 @@ impl Pmtud {
 
             // With only failed probes, binary search between the smallest failed
             // probe and the minimum supported MTU
-            (Some(failed_probe_size), None) =>
-                self.probe_size = (MIN_CLIENT_INITIAL_LEN + failed_probe_size) / 2,
+            (Some(failed_probe_size), None) => {
+                self.probe_size = (MIN_CLIENT_INITIAL_LEN + failed_probe_size) / 2
+            },
 
             // As the algorithm is optimistic in that the initial probe size
             // is the maximum supported MTU, then having only a successful probe
@@ -389,8 +390,8 @@ mod tests {
 
             // If the probe size hasn't changed and is equal to the minimum
             // supported MTU, break the loop
-            if pmtud.get_probe_size() == probe_size &&
-                probe_size == MIN_CLIENT_INITIAL_LEN
+            if pmtud.get_probe_size() == probe_size
+                && probe_size == MIN_CLIENT_INITIAL_LEN
             {
                 break;
             }

@@ -29,7 +29,7 @@ use std::convert::TryInto;
 use crate::Error;
 use crate::Result;
 /* PATCH */
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::packet;
 use crate::range_buf::RangeBuf;
@@ -50,14 +50,14 @@ pub const MAX_STREAM_OVERHEAD: usize = 12;
 pub const MAX_STREAM_SIZE: u64 = 1 << 62;
 
 /* PATCH */
-#[derive(Clone, Debug, PartialEq, Eq,Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EcnCounts {
     pub ect0_count: u64,
     pub ect1_count: u64,
     pub ecn_ce_count: u64,
 }
 
-#[derive(Clone, PartialEq, Eq,Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Frame {
     Padding {
         len: usize,
@@ -190,7 +190,7 @@ pub enum Frame {
     /* PATCH */
     Others {
         data: Vec<u8>,
-    }
+    },
 }
 
 impl Frame {
@@ -340,7 +340,7 @@ impl Frame {
             /* PATCH */
             0xff => Frame::Others {
                 data: b.get_bytes_with_varint_length()?.to_vec(),
-                },
+            },
 
             _ => return Err(Error::InvalidFrame),
         };
@@ -607,7 +607,7 @@ impl Frame {
             /* PATCH */
             Frame::Others { data } => {
                 b.put_varint(0xff)?;
-                b.put_varint(data.len() as u64 )?;
+                b.put_varint(data.len() as u64)?;
                 b.put_bytes(data.as_ref())?;
             },
         }
@@ -650,9 +650,9 @@ impl Frame {
                 }
 
                 if let Some(ecn) = ecn_counts {
-                    len += octets::varint_len(ecn.ect0_count) +
-                        octets::varint_len(ecn.ect1_count) +
-                        octets::varint_len(ecn.ecn_ce_count);
+                    len += octets::varint_len(ecn.ect0_count)
+                        + octets::varint_len(ecn.ect1_count)
+                        + octets::varint_len(ecn.ecn_ce_count);
                 }
 
                 len
@@ -826,9 +826,7 @@ impl Frame {
                 *length // data
             },
             /* PATCH */
-            Frame::Others { data } => {
-                data.len()
-            },
+            Frame::Others { data } => data.len(),
         }
     }
 
@@ -836,20 +834,20 @@ impl Frame {
         // Any other frame is ack-eliciting (note the `!`).
         !matches!(
             self,
-            Frame::Padding { .. } |
-                Frame::ACK { .. } |
-                Frame::ApplicationClose { .. } |
-                Frame::ConnectionClose { .. }
+            Frame::Padding { .. }
+                | Frame::ACK { .. }
+                | Frame::ApplicationClose { .. }
+                | Frame::ConnectionClose { .. }
         )
     }
 
     pub fn probing(&self) -> bool {
         matches!(
             self,
-            Frame::Padding { .. } |
-                Frame::NewConnectionId { .. } |
-                Frame::PathChallenge { .. } |
-                Frame::PathResponse { .. }
+            Frame::Padding { .. }
+                | Frame::NewConnectionId { .. }
+                | Frame::PathChallenge { .. }
+                | Frame::PathResponse { .. }
         )
     }
 
@@ -979,14 +977,16 @@ impl Frame {
                 maximum: *max,
             },
 
-            Frame::DataBlocked { limit } =>
-                QuicFrame::DataBlocked { limit: *limit },
+            Frame::DataBlocked { limit } => {
+                QuicFrame::DataBlocked { limit: *limit }
+            },
 
-            Frame::StreamDataBlocked { stream_id, limit } =>
+            Frame::StreamDataBlocked { stream_id, limit } => {
                 QuicFrame::StreamDataBlocked {
                     stream_id: *stream_id,
                     limit: *limit,
-                },
+                }
+            },
 
             Frame::StreamsBlockedBidi { limit } => QuicFrame::StreamsBlocked {
                 stream_type: StreamType::Bidirectional,
@@ -1013,13 +1013,15 @@ impl Frame {
                 )),
             },
 
-            Frame::RetireConnectionId { seq_num } =>
+            Frame::RetireConnectionId { seq_num } => {
                 QuicFrame::RetireConnectionId {
                     sequence_number: *seq_num as u32,
-                },
+                }
+            },
 
-            Frame::PathChallenge { .. } =>
-                QuicFrame::PathChallenge { data: None },
+            Frame::PathChallenge { .. } => {
+                QuicFrame::PathChallenge { data: None }
+            },
 
             Frame::PathResponse { .. } => QuicFrame::PathResponse { data: None },
 
@@ -1055,7 +1057,7 @@ impl Frame {
                 raw: None,
             },
             /* PATCH */
-            Frame::Others { data } => QuicFrame::Unknown { 
+            Frame::Others { data } => QuicFrame::Unknown {
                 raw_frame_type: 0xff,
                 frame_type_value: None,
                 raw: None,
@@ -1228,11 +1230,8 @@ impl std::fmt::Debug for Frame {
                 write!(f, "DATAGRAM len={length}")?;
             },
             /* PATCH */
-            Frame::Others { data } =>{
-                write!(
-                    f,
-                    "Others data={data:x?}"
-                )?;
+            Frame::Others { data } => {
+                write!(f, "Others data={data:x?}")?;
             },
         }
 

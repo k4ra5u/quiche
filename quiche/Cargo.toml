@@ -82,9 +82,11 @@ octets = { workspace = true }
 qlog = { workspace = true, optional = true }
 sfv = { version = "0.9", optional = true }
 slab = "0.4"
-smallvec = { workspace = true, features = ["union"] }
+smallvec = { workspace = true, features = ["union", "serde"] }
 enum_dispatch = "0.3"
 serde_with = "1.11.0"
+ipnet = "2"
+ring = "0.17"
 
 [target."cfg(windows)".dependencies]
 windows-sys = { version = "0.59", features = [

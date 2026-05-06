@@ -64,8 +64,8 @@ const RETRY_AEAD_ALG: crypto::Algorithm = crypto::Algorithm::AES128_GCM;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Epoch {
-    Initial     = 0,
-    Handshake   = 1,
+    Initial = 0,
+    Handshake = 1,
     Application = 2,
 }
 
@@ -177,8 +177,9 @@ impl Type {
 
             Type::ZeroRTT => qlog::events::quic::PacketType::ZeroRtt,
 
-            Type::VersionNegotiation =>
-                qlog::events::quic::PacketType::VersionNegotiation,
+            Type::VersionNegotiation => {
+                qlog::events::quic::PacketType::VersionNegotiation
+            },
 
             Type::Short => qlog::events::quic::PacketType::OneRtt,
         }
@@ -356,7 +357,7 @@ impl<'a> Header<'a> {
         Header::from_bytes(&mut b, dcid_len)
     }
 
-    pub(crate) fn from_bytes<'b>(
+    pub fn from_bytes<'b>(
         b: &'b mut octets::OctetsMut, dcid_len: usize,
     ) -> Result<Header<'a>> {
         let first = b.get_u8()?;
@@ -454,7 +455,7 @@ impl<'a> Header<'a> {
         })
     }
 
-    pub(crate) fn to_bytes(&self, out: &mut octets::OctetsMut) -> Result<()> {
+    pub fn to_bytes(&self, out: &mut octets::OctetsMut) -> Result<()> {
         let mut first = 0;
 
         // Encode pkt num length.
@@ -815,8 +816,9 @@ fn compute_retry_integrity_tag(
     ];
 
     let (key, nonce) = match version {
-        crate::PROTOCOL_VERSION_V1 =>
-            (&RETRY_INTEGRITY_KEY_V1, RETRY_INTEGRITY_NONCE_V1),
+        crate::PROTOCOL_VERSION_V1 => {
+            (&RETRY_INTEGRITY_KEY_V1, RETRY_INTEGRITY_NONCE_V1)
+        },
 
         _ => (&RETRY_INTEGRITY_KEY_V1, RETRY_INTEGRITY_NONCE_V1),
     };
@@ -849,7 +851,7 @@ fn compute_retry_integrity_tag(
 
     Ok(out_tag)
 }
-
+#[derive(Debug)]
 pub struct KeyUpdate {
     /// 1-RTT key used prior to a key update.
     pub crypto_open: crypto::Open,
@@ -865,7 +867,7 @@ pub struct KeyUpdate {
     /// When the old key should be discarded.
     pub timer: Instant,
 }
-
+#[derive(Debug)]
 pub struct PktNumSpace {
     /// The largest packet number received.
     pub largest_rx_pkt_num: u64,
@@ -916,7 +918,7 @@ impl PktNumSpace {
             self.largest_tx_pkt_num.max(Some(sent_pkt.pkt_num));
     }
 }
-
+#[derive(Debug)]
 pub struct CryptoContext {
     pub key_update: Option<KeyUpdate>,
     pub crypto_open: Option<crypto::Open>,
@@ -1015,6 +1017,8 @@ impl CryptoContext {
 /// [faster ACK]: https://www.rfc-editor.org/rfc/rfc9002.html#section-6.2.4
 /// [optimistic ACK attack]: https://www.rfc-editor.org/rfc/rfc9000.html#section-21.4
 /// [PROTOCOL_VIOLATION]: https://www.rfc-editor.org/rfc/rfc9000#section-13.1
+///
+#[derive(Debug)]
 pub struct PktNumManager {
     // TODO:
     // Defer including next_pkt_num in order to reduce the size of this patch
@@ -1126,7 +1130,7 @@ impl PktNumManager {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct PktNumWindow {
     lower: u64,
     window: u128,

@@ -152,14 +152,16 @@ impl<F: BufFactory> SendBuf<F> {
 
         if let Some(fin_off) = self.fin_off {
             // Can't write past final offset.
-            if max_off > fin_off {
-                return Err(Error::FinalSize);
-            }
+            /* PATCH */
+            // hook cekck of final size
+            // if max_off > fin_off {
+            //     return Err(Error::FinalSize);
+            // }
 
-            // Can't "undo" final offset.
-            if max_off == fin_off && !fin {
-                return Err(Error::FinalSize);
-            }
+            // // Can't "undo" final offset.
+            // if max_off == fin_off && !fin {
+            //     return Err(Error::FinalSize);
+            // }
         }
 
         if fin {
@@ -243,10 +245,10 @@ impl<F: BufFactory> SendBuf<F> {
         while out_len > 0 {
             let off_front = self.off_front();
 
-            if self.is_empty() ||
-                off_front >= self.off ||
-                off_front != next_off ||
-                off_front >= self.max_data
+            if self.is_empty()
+                || off_front >= self.off
+                || off_front != next_off
+                || off_front >= self.max_data
             {
                 break;
             }

@@ -12,7 +12,7 @@ use libc::c_void;
 // statically allocate it. While it is not often modified upstream, it needs to
 // be kept in sync.
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct EVP_AEAD_CTX {
     aead: libc::uintptr_t,
     opaque: [u8; 580],
@@ -20,7 +20,7 @@ struct EVP_AEAD_CTX {
     tag_len: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub(crate) struct AES_KEY {
     rd_key: [u32; 4 * (14 + 1)],
@@ -38,7 +38,7 @@ impl Algorithm {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct PacketKey {
     alg: Algorithm,
 
@@ -164,7 +164,7 @@ impl PacketKey {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
 pub(crate) enum HeaderProtectionKey {
     Aes(AES_KEY),

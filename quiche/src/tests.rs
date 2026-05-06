@@ -187,16 +187,16 @@ fn transport_params_unknown_max_space_respected() {
         .next()
         .expect("Should have a 0th element.");
     assert!(
-        unknown_params_first.id == 5 &&
-            unknown_params_first.value == vec![0xau8; 232]
+        unknown_params_first.id == 5
+            && unknown_params_first.value == vec![0xau8; 232]
     );
 
     let unknown_params_second = unknown_params_iter
         .next()
         .expect("Should have a 1th element.");
     assert!(
-        unknown_params_second.id == 6 &&
-            unknown_params_second.value == vec![0xau8; 7]
+        unknown_params_second.id == 6
+            && unknown_params_second.value == vec![0xau8; 7]
     );
 }
 
@@ -5526,10 +5526,13 @@ fn stream_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let stream = frames.first().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 8,
-            data: <RangeBuf>::from(&out, off, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 8,
+                data: <RangeBuf>::from(&out, off, false),
+            }
+        );
 
         off = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5549,10 +5552,13 @@ fn stream_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let stream = frames.first().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 16,
-            data: <RangeBuf>::from(&out, off, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 16,
+                data: <RangeBuf>::from(&out, off, false),
+            }
+        );
 
         off = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5572,10 +5578,13 @@ fn stream_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let stream = frames.first().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 20,
-            data: <RangeBuf>::from(&out, off, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 20,
+                data: <RangeBuf>::from(&out, off, false),
+            }
+        );
 
         off = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5610,10 +5619,13 @@ fn stream_priority(
 
         let stream = frames.first().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 4,
-            data: <RangeBuf>::from(&out, off, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 4,
+                data: <RangeBuf>::from(&out, off, false),
+            }
+        );
 
         off = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5633,10 +5645,13 @@ fn stream_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let stream = frames.first().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 0,
-            data: <RangeBuf>::from(&out, off, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 0,
+                data: <RangeBuf>::from(&out, off, false),
+            }
+        );
 
         off = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5844,9 +5859,10 @@ fn stream_datagram_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let mut frame_iter = frames.iter();
 
-        assert_eq!(frame_iter.next().unwrap(), &frame::Frame::Datagram {
-            data: out.into()
-        });
+        assert_eq!(
+            frame_iter.next().unwrap(),
+            &frame::Frame::Datagram { data: out.into() }
+        );
         assert_eq!(frame_iter.next(), None);
 
         // STREAM 0
@@ -5858,10 +5874,13 @@ fn stream_datagram_priority(
         let mut frame_iter = frames.iter();
         let stream = frame_iter.next().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 0,
-            data: <RangeBuf>::from(&out, off_0, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 0,
+                data: <RangeBuf>::from(&out, off_0, false),
+            }
+        );
 
         off_0 = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -5878,9 +5897,10 @@ fn stream_datagram_priority(
             test_utils::decode_pkt(&mut pipe.client, &mut buf[..len]).unwrap();
         let mut frame_iter = frames.iter();
 
-        assert_eq!(frame_iter.next().unwrap(), &frame::Frame::Datagram {
-            data: out.into()
-        });
+        assert_eq!(
+            frame_iter.next().unwrap(),
+            &frame::Frame::Datagram { data: out.into() }
+        );
         assert_eq!(frame_iter.next(), None);
 
         // STREAM 4
@@ -5892,10 +5912,13 @@ fn stream_datagram_priority(
         let mut frame_iter = frames.iter();
         let stream = frame_iter.next().unwrap();
 
-        assert_eq!(stream, &frame::Frame::Stream {
-            stream_id: 4,
-            data: <RangeBuf>::from(&out, off_4, false),
-        });
+        assert_eq!(
+            stream,
+            &frame::Frame::Stream {
+                stream_id: 4,
+                data: <RangeBuf>::from(&out, off_4, false),
+            }
+        );
 
         off_4 = match stream {
             frame::Frame::Stream { data, .. } => data.max_off(),
@@ -7369,8 +7392,8 @@ fn initial_cwnd(
     } else {
         // TODO understand where these adjustments come from and why they vary
         // by TLS implementation and OS target.
-        let expected = CUSTOM_INITIAL_CONGESTION_WINDOW_PACKETS * 1200 +
-            if cfg!(feature = "openssl") {
+        let expected = CUSTOM_INITIAL_CONGESTION_WINDOW_PACKETS * 1200
+            + if cfg!(feature = "openssl") {
                 1463
             } else {
                 1447
@@ -9083,17 +9106,20 @@ fn resilience_against_migration_attack(
     let buf = [42; DATA_BYTES];
     let mut recv_buf = [0; DATA_BYTES];
     let send1_bytes = pipe.server.stream_send(1, &buf, true).unwrap();
-    assert_eq!(send1_bytes, match cc_algorithm_name {
-        #[cfg(feature = "openssl")]
-        "bbr2" => 14041,
-        #[cfg(not(feature = "openssl"))]
-        "bbr2" => 13955,
-        #[cfg(feature = "openssl")]
-        "bbr2_gcongestion" => 13966,
-        #[cfg(not(feature = "openssl"))]
-        "bbr2_gcongestion" => 13880,
-        _ => 12000,
-    });
+    assert_eq!(
+        send1_bytes,
+        match cc_algorithm_name {
+            #[cfg(feature = "openssl")]
+            "bbr2" => 14041,
+            #[cfg(not(feature = "openssl"))]
+            "bbr2" => 13955,
+            #[cfg(feature = "openssl")]
+            "bbr2_gcongestion" => 13966,
+            #[cfg(not(feature = "openssl"))]
+            "bbr2_gcongestion" => 13880,
+            _ => 12000,
+        }
+    );
     assert_eq!(
         test_utils::process_flight(
             &mut pipe.client,
@@ -9573,10 +9599,13 @@ fn challenge_no_cids(
     pipe.client.next_pkt_num += 1;
 
     pipe.server
-        .recv(&mut pkt_buf[..written], RecvInfo {
-            to: server_addr,
-            from: client_addr_2,
-        })
+        .recv(
+            &mut pkt_buf[..written],
+            RecvInfo {
+                to: server_addr,
+                from: client_addr_2,
+            },
+        )
         .expect("server receive path challenge");
 
     // Show that the new path is not considered a destination path by quiche

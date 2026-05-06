@@ -85,8 +85,9 @@ impl ModeImpl for ProbeBW {
                 self.enter_probe_down(false, false, now, params)
             },
             CyclePhase::Cruise => self.enter_probe_cruise(now),
-            CyclePhase::Refill =>
-                self.enter_probe_refill(self.cycle.probe_up_rounds, now),
+            CyclePhase::Refill => {
+                self.enter_probe_refill(self.cycle.probe_up_rounds, now)
+            },
             CyclePhase::Up | CyclePhase::Down => {},
         }
     }
@@ -123,8 +124,8 @@ impl ModeImpl for ProbeBW {
                     congestion_event,
                     params,
                 );
-                if self.cycle.phase != CyclePhase::Down &&
-                    self.model.maybe_expire_min_rtt(congestion_event, params)
+                if self.cycle.phase != CyclePhase::Down
+                    && self.model.maybe_expire_min_rtt(congestion_event, params)
                 {
                     switch_to_probe_rtt = true;
                 }
@@ -165,8 +166,8 @@ impl ModeImpl for ProbeBW {
             return Limits::no_greater_than(limit);
         }
 
-        if self.cycle.phase == CyclePhase::Up &&
-            params.probe_up_ignore_inflight_hi
+        if self.cycle.phase == CyclePhase::Up
+            && params.probe_up_ignore_inflight_hi
         {
             // Similar to STARTUP.
             return Limits::no_greater_than(self.model.inflight_lo());
@@ -178,8 +179,8 @@ impl ModeImpl for ProbeBW {
     }
 
     fn is_probing_for_bandwidth(&self) -> bool {
-        self.cycle.phase == CyclePhase::Refill ||
-            self.cycle.phase == CyclePhase::Up
+        self.cycle.phase == CyclePhase::Refill
+            || self.cycle.phase == CyclePhase::Up
     }
 
     fn on_exit_quiescence(
@@ -297,8 +298,8 @@ impl ProbeBW {
                 self.cycle.has_advanced_max_bw = true;
             }
 
-            if self.cycle.last_cycle_stopped_risky_probe &&
-                !self.cycle.last_cycle_probed_too_high
+            if self.cycle.last_cycle_stopped_risky_probe
+                && !self.cycle.last_cycle_probed_too_high
             {
                 self.enter_probe_refill(0, congestion_event.event_time);
                 return;
@@ -401,8 +402,8 @@ impl ProbeBW {
 
         let mut is_risky = false;
         let mut is_queuing = false;
-        if self.cycle.last_cycle_probed_too_high &&
-            prior_in_flight >= self.model.inflight_hi()
+        if self.cycle.last_cycle_probed_too_high
+            && prior_in_flight >= self.model.inflight_hi()
         {
             is_risky = true;
         } else if self.cycle.rounds_in_phase > 0 {
@@ -410,8 +411,8 @@ impl ProbeBW {
                 if congestion_event.end_of_round_trip {
                     self.model
                         .check_persistent_queue(params.full_bw_threshold, params);
-                    if self.model.rounds_with_queueing() >=
-                        params.max_probe_up_queue_rounds
+                    if self.model.rounds_with_queueing()
+                        >= params.max_probe_up_queue_rounds
                     {
                         is_queuing = true;
                     }
@@ -422,10 +423,10 @@ impl ProbeBW {
                 if params.add_ack_height_to_queueing_threshold {
                     queuing_threshold_extra_bytes += self.model.max_ack_height();
                 }
-                let queuing_threshold = (params.full_bw_threshold *
-                    self.model.bdp0() as f32)
-                    as usize +
-                    queuing_threshold_extra_bytes;
+                let queuing_threshold = (params.full_bw_threshold
+                    * self.model.bdp0() as f32)
+                    as usize
+                    + queuing_threshold_extra_bytes;
 
                 is_queuing =
                     congestion_event.bytes_in_flight >= queuing_threshold;
@@ -478,8 +479,8 @@ impl ProbeBW {
         // TODO(vlad): use BytesInFlight?
         let mut inflight_at_send = send_state.bytes_in_flight;
         if params.use_bytes_delivered_for_inflight_hi {
-            inflight_at_send = self.model.total_bytes_acked() -
-                congestion_event.last_packet_send_state.total_bytes_acked;
+            inflight_at_send = self.model.total_bytes_acked()
+                - congestion_event.last_packet_send_state.total_bytes_acked;
         }
 
         if self.cycle.is_sample_from_probing {
@@ -489,11 +490,11 @@ impl ProbeBW {
                 params,
             ) {
                 self.cycle.is_sample_from_probing = false;
-                if !send_state.is_app_limited ||
-                    params.max_probe_up_queue_rounds > 0
+                if !send_state.is_app_limited
+                    || params.max_probe_up_queue_rounds > 0
                 {
-                    let inflight_target = (target_bytes_inflight as f32 *
-                        (1.0 - params.beta))
+                    let inflight_target = (target_bytes_inflight as f32
+                        * (1.0 - params.beta))
                         as usize;
 
                     let mut new_inflight_hi =
@@ -547,14 +548,14 @@ impl ProbeBW {
 
         let mut rounds = params.probe_bw_probe_max_rounds;
         if params.probe_bw_probe_reno_gain > 0.0 {
-            let reno_rounds = (params.probe_bw_probe_reno_gain *
-                target_bytes_inflight as f32 /
-                DEFAULT_MSS as f32) as usize;
+            let reno_rounds = (params.probe_bw_probe_reno_gain
+                * target_bytes_inflight as f32
+                / DEFAULT_MSS as f32) as usize;
             rounds = reno_rounds.min(rounds);
         }
 
-        self.cycle.rounds_since_probe >=
-            (rounds as f64 * probe_wait_fraction) as usize
+        self.cycle.rounds_since_probe
+            >= (rounds as f64 * probe_wait_fraction) as usize
     }
 
     // Used to prevent a BBR2 flow from staying in PROBE_DOWN for too
@@ -586,8 +587,8 @@ impl ProbeBW {
             return;
         } else {
             // TODO(vlad): probe_up_simplify_inflight_hi?
-            if congestion_event.prior_bytes_in_flight <
-                congestion_event.prior_cwnd
+            if congestion_event.prior_bytes_in_flight
+                < congestion_event.prior_cwnd
             {
                 // Not fully utilizing cwnd, so can't safely grow.
                 return;

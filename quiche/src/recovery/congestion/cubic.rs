@@ -135,8 +135,8 @@ impl State {
     fn w_cubic(&self, t: Duration, max_datagram_size: usize) -> f64 {
         let w_max = self.w_max / max_datagram_size as f64;
 
-        (C * (t.as_secs_f64() - self.k).powi(3) + w_max) *
-            max_datagram_size as f64
+        (C * (t.as_secs_f64() - self.k).powi(3) + w_max)
+            * max_datagram_size as f64
     }
 
     // W_est = W_est + alpha_aimd * (segments_acked / cwnd)  (Eq. 4)
@@ -215,9 +215,9 @@ fn on_packet_acked(
     if r.congestion_recovery_start_time.is_some() {
         let new_lost = r.lost_count - r.cubic_state.prior.lost_count;
 
-        let rollback_threshold = (r.congestion_window / r.max_datagram_size) *
-            ROLLBACK_THRESHOLD_PERCENT /
-            100;
+        let rollback_threshold = (r.congestion_window / r.max_datagram_size)
+            * ROLLBACK_THRESHOLD_PERCENT
+            / 100;
 
         let rollback_threshold = rollback_threshold.max(MIN_ROLLBACK_THRESHOLD);
 
@@ -619,8 +619,8 @@ mod tests {
         assert!(sender.hystart.css_start_time().is_none());
         assert_eq!(
             sender.congestion_window(),
-            cwnd_prev +
-                size / hystart::CSS_GROWTH_DIVISOR * hystart::N_RTT_SAMPLE
+            cwnd_prev
+                + size / hystart::CSS_GROWTH_DIVISOR * hystart::N_RTT_SAMPLE
         );
     }
 

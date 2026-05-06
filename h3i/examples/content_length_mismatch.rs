@@ -17,16 +17,21 @@ const STREAM_ID: u64 = 0;
 /// body that is only 4 bytes long. This verifies https://datatracker.ietf.org/doc/html/rfc9114#section-4.1.2-3 for
 /// cloudflare-quic.com.
 fn main() {
+    std::env::set_var("SSLKEYLOGFILE", "/media/john/Data/key.log");
     let config = Config::new()
-        .with_host_port("cloudflare-quic.com".to_string())
+        .with_host_port("k4ra5u.xx:32440".to_string())
         .with_idle_timeout(2000)
+        .verify_peer(false)
         .build()
         .unwrap();
+        // .with_host_port("".to_string())
+
+
 
     let headers = vec![
         Header::new(b":method", b"POST"),
         Header::new(b":scheme", b"https"),
-        Header::new(b":authority", b"cloudflare-quic.com"),
+        Header::new(b":authority", b"k4ra5u.xx"),
         Header::new(b":path", b"/"),
         // We say that we're going to send a body with 5 bytes...
         Header::new(b"content-length", b"5"),
@@ -57,13 +62,6 @@ fn main() {
                 stream_id: STREAM_ID,
                 event_type: StreamEventType::Headers,
             }),
-        },
-        Action::ConnectionClose {
-            error: quiche::ConnectionError {
-                is_app: true,
-                error_code: quiche::h3::WireErrorCode::NoError as u64,
-                reason: vec![],
-            },
         },
     ];
 

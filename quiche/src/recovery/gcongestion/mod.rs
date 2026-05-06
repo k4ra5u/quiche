@@ -234,16 +234,16 @@ pub struct BbrParams {
 #[doc(hidden)]
 pub enum BbrBwLoReductionStrategy {
     /// Uses the default strategy based on `BBRBeta`.
-    Default           = 0,
+    Default = 0,
 
     /// Considers min-rtt to estimate bandwidth reduction.
-    MinRttReduction   = 1,
+    MinRttReduction = 1,
 
     /// Considers inflight data to estimate bandwidth reduction.
     InflightReduction = 2,
 
     /// Considers cwnd to estimate bandwidth reduction.
-    CwndReduction     = 3,
+    CwndReduction = 3,
 }
 
 #[doc(hidden)]

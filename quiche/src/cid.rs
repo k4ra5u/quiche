@@ -41,7 +41,7 @@ use smallvec::SmallVec;
 /// `active_conn_id_limit` (see RFC 9000, section 5.1.2).
 const RETIRED_CONN_ID_LIMIT_MULTIPLIER: usize = 3;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct BoundedConnectionIdSeqSet {
     /// The inner set.
     inner: HashSet<u64>,
@@ -92,7 +92,7 @@ pub struct ConnectionIdEntry {
     pub path_id: Option<usize>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 struct BoundedNonEmptyConnectionIdVecDeque {
     /// The inner `VecDeque`.
     inner: VecDeque<ConnectionIdEntry>,
@@ -198,7 +198,7 @@ impl BoundedNonEmptyConnectionIdVecDeque {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ConnectionIdentifiers {
     /// All the Destination Connection IDs provided by our peer.
     dcids: BoundedNonEmptyConnectionIdVecDeque,

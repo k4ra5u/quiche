@@ -133,9 +133,9 @@ impl Hystart {
 
         // Slow Start.
         if self.css_start_time().is_none() {
-            if self.rtt_sample_count >= N_RTT_SAMPLE &&
-                self.current_round_min_rtt != Duration::MAX &&
-                self.last_round_min_rtt != Duration::MAX
+            if self.rtt_sample_count >= N_RTT_SAMPLE
+                && self.current_round_min_rtt != Duration::MAX
+                && self.last_round_min_rtt != Duration::MAX
             {
                 // clamp(min_rtt_thresh, last_round_min_rtt/8,
                 // max_rtt_thresh)
@@ -144,8 +144,8 @@ impl Hystart {
                 let rtt_thresh = cmp::min(rtt_thresh, MAX_RTT_THRESH);
 
                 // Check if we can exit to CSS.
-                if self.current_round_min_rtt >=
-                    self.last_round_min_rtt.saturating_add(rtt_thresh)
+                if self.current_round_min_rtt
+                    >= self.last_round_min_rtt.saturating_add(rtt_thresh)
                 {
                     self.css_baseline_min_rtt = self.current_round_min_rtt;
                     self.css_start_time = Some(now);

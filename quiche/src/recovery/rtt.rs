@@ -103,12 +103,12 @@ impl RttStats {
             adjusted_rtt = latest_rtt - ack_delay;
         }
 
-        self.rttvar = self.rttvar * 3 / 4 +
-            Duration::from_nanos(
+        self.rttvar = self.rttvar * 3 / 4
+            + Duration::from_nanos(
                 self.smoothed_rtt
                     .as_nanos()
-                    .abs_diff(adjusted_rtt.as_nanos()) as u64 /
-                    4,
+                    .abs_diff(adjusted_rtt.as_nanos()) as u64
+                    / 4,
             );
 
         self.smoothed_rtt = self.smoothed_rtt * 7 / 8 + adjusted_rtt / 8;

@@ -46,6 +46,7 @@ use crate::client::connection_summary::MAX_SERIALIZED_BUFFER_LEN;
 use crate::encode_header_block;
 
 pub type BoxError = Box<dyn Error + Send + Sync + 'static>;
+const MAX_QPACK_DECODED_HEADER_SECTION_SIZE: u64 = 2_000_000;
 
 /// An internal representation of a QUIC or HTTP/3 frame. This type exists so
 /// that we can extend types defined in Quiche.
@@ -250,8 +251,11 @@ impl TryFrom<QFrame> for EnrichedHeaders {
         match value {
             QFrame::Headers { header_block } => {
                 let mut qpack_decoder = quiche::h3::qpack::Decoder::new();
-                let headers =
-                    qpack_decoder.decode(&header_block, u64::MAX).unwrap();
+                let headers = qpack_decoder
+                    .decode(&header_block, MAX_QPACK_DECODED_HEADER_SECTION_SIZE)
+                    .map_err(|e| {
+                        format!("failed to decode qpack headers safely: {e:?}")
+                    })?;
 
                 Ok(EnrichedHeaders::from(headers))
             },
@@ -587,8 +591,9 @@ impl Debug for CloseTriggerFrame {
 impl PartialEq for CloseTriggerFrame {
     fn eq(&self, other: &Self) -> bool {
         match (&self.comparator, &other.comparator) {
-            (Comparator::Frame(this_frame), Comparator::Frame(other_frame)) =>
-                self.stream_id == other.stream_id && this_frame == other_frame,
+            (Comparator::Frame(this_frame), Comparator::Frame(other_frame)) => {
+                self.stream_id == other.stream_id && this_frame == other_frame
+            },
             _ => false,
         }
     }
@@ -601,10 +606,10 @@ mod tests {
 
     #[test]
     fn test_header_equivalence() {
-        let this = CloseTriggerFrame::new(0, vec![
-            Header::new(b"hello", b"world"),
-            Header::new(b"go", b"jets"),
-        ]);
+        let this = CloseTriggerFrame::new(
+            0,
+            vec![Header::new(b"hello", b"world"), Header::new(b"go", b"jets")],
+        );
         let other: H3iFrame = vec![
             Header::new(b"hello", b"world"),
             Header::new(b"go", b"jets"),
@@ -617,11 +622,14 @@ mod tests {
 
     #[test]
     fn test_header_non_equivalence() {
-        let this = CloseTriggerFrame::new(0, vec![
-            Header::new(b"hello", b"world"),
-            Header::new(b"go", b"jets"),
-            Header::new(b"go", b"devils"),
-        ]);
+        let this = CloseTriggerFrame::new(
+            0,
+            vec![
+                Header::new(b"hello", b"world"),
+                Header::new(b"go", b"jets"),
+                Header::new(b"go", b"devils"),
+            ],
+        );
         let other: H3iFrame =
             vec![Header::new(b"hello", b"world"), Header::new(b"go", b"jets")]
                 .into();

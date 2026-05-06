@@ -276,27 +276,32 @@ impl Stream {
                 // initialized, no more SETTINGS are permitted.
                 match (ty, self.remote_initialized) {
                     // Initialize control stream.
-                    (frame::SETTINGS_FRAME_TYPE_ID, false) =>
-                        self.remote_initialized = true,
+                    (frame::SETTINGS_FRAME_TYPE_ID, false) => {
+                        self.remote_initialized = true
+                    },
 
                     // Non-SETTINGS frames not allowed on control stream
                     // before initialization.
                     (_, false) => return Err(Error::MissingSettings),
 
                     // Additional SETTINGS frame.
-                    (frame::SETTINGS_FRAME_TYPE_ID, true) =>
-                        return Err(Error::FrameUnexpected),
+                    (frame::SETTINGS_FRAME_TYPE_ID, true) => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
                     // Frames that can't be received on control stream
                     // after initialization.
-                    (frame::DATA_FRAME_TYPE_ID, true) =>
-                        return Err(Error::FrameUnexpected),
+                    (frame::DATA_FRAME_TYPE_ID, true) => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    (frame::HEADERS_FRAME_TYPE_ID, true) =>
-                        return Err(Error::FrameUnexpected),
+                    (frame::HEADERS_FRAME_TYPE_ID, true) => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    (frame::PUSH_PROMISE_FRAME_TYPE_ID, true) =>
-                        return Err(Error::FrameUnexpected),
+                    (frame::PUSH_PROMISE_FRAME_TYPE_ID, true) => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
                     // All other frames are ignored after initialization.
                     (_, true) => (),
@@ -316,8 +321,9 @@ impl Stream {
                             self.remote_initialized = true;
                         },
 
-                        (frame::DATA_FRAME_TYPE_ID, false) =>
-                            return Err(Error::FrameUnexpected),
+                        (frame::DATA_FRAME_TYPE_ID, false) => {
+                            return Err(Error::FrameUnexpected)
+                        },
 
                         (frame::HEADERS_FRAME_TYPE_ID, true) => {
                             if self.trailers_received {
@@ -337,17 +343,21 @@ impl Stream {
                             self.data_received = true;
                         },
 
-                        (frame::CANCEL_PUSH_FRAME_TYPE_ID, _) =>
-                            return Err(Error::FrameUnexpected),
+                        (frame::CANCEL_PUSH_FRAME_TYPE_ID, _) => {
+                            return Err(Error::FrameUnexpected)
+                        },
 
-                        (frame::SETTINGS_FRAME_TYPE_ID, _) =>
-                            return Err(Error::FrameUnexpected),
+                        (frame::SETTINGS_FRAME_TYPE_ID, _) => {
+                            return Err(Error::FrameUnexpected)
+                        },
 
-                        (frame::GOAWAY_FRAME_TYPE_ID, _) =>
-                            return Err(Error::FrameUnexpected),
+                        (frame::GOAWAY_FRAME_TYPE_ID, _) => {
+                            return Err(Error::FrameUnexpected)
+                        },
 
-                        (frame::MAX_PUSH_FRAME_TYPE_ID, _) =>
-                            return Err(Error::FrameUnexpected),
+                        (frame::MAX_PUSH_FRAME_TYPE_ID, _) => {
+                            return Err(Error::FrameUnexpected)
+                        },
 
                         // All other frames can be ignored regardless of stream
                         // state.
@@ -359,20 +369,25 @@ impl Stream {
             Some(Type::Push) => {
                 match ty {
                     // Frames that can never be received on request streams.
-                    frame::CANCEL_PUSH_FRAME_TYPE_ID =>
-                        return Err(Error::FrameUnexpected),
+                    frame::CANCEL_PUSH_FRAME_TYPE_ID => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    frame::SETTINGS_FRAME_TYPE_ID =>
-                        return Err(Error::FrameUnexpected),
+                    frame::SETTINGS_FRAME_TYPE_ID => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    frame::PUSH_PROMISE_FRAME_TYPE_ID =>
-                        return Err(Error::FrameUnexpected),
+                    frame::PUSH_PROMISE_FRAME_TYPE_ID => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    frame::GOAWAY_FRAME_TYPE_ID =>
-                        return Err(Error::FrameUnexpected),
+                    frame::GOAWAY_FRAME_TYPE_ID => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
-                    frame::MAX_PUSH_FRAME_TYPE_ID =>
-                        return Err(Error::FrameUnexpected),
+                    frame::MAX_PUSH_FRAME_TYPE_ID => {
+                        return Err(Error::FrameUnexpected)
+                    },
 
                     _ => (),
                 }
@@ -405,10 +420,10 @@ impl Stream {
                 // These frame types can never have 0 payload length because
                 // they always have fields that must be populated.
                 Some(
-                    frame::GOAWAY_FRAME_TYPE_ID |
-                    frame::PUSH_PROMISE_FRAME_TYPE_ID |
-                    frame::CANCEL_PUSH_FRAME_TYPE_ID |
-                    frame::MAX_PUSH_FRAME_TYPE_ID,
+                    frame::GOAWAY_FRAME_TYPE_ID
+                    | frame::PUSH_PROMISE_FRAME_TYPE_ID
+                    | frame::CANCEL_PUSH_FRAME_TYPE_ID
+                    | frame::MAX_PUSH_FRAME_TYPE_ID,
                 ) => {
                     if len == 0 {
                         return Err(Error::FrameError);
@@ -446,12 +461,12 @@ impl Stream {
         let read = match conn.stream_recv(self.id, buf) {
             Ok((len, fin)) => {
                 // Check whether one of the critical stream was closed.
-                if fin &&
-                    matches!(
+                if fin
+                    && matches!(
                         self.ty,
-                        Some(Type::Control) |
-                            Some(Type::QpackEncoder) |
-                            Some(Type::QpackDecoder)
+                        Some(Type::Control)
+                            | Some(Type::QpackEncoder)
+                            | Some(Type::QpackDecoder)
                     )
                 {
                     super::close_conn_critical_stream(conn)?;
@@ -464,9 +479,9 @@ impl Stream {
                 // Check whether one of the critical stream was closed.
                 if matches!(
                     self.ty,
-                    Some(Type::Control) |
-                        Some(Type::QpackEncoder) |
-                        Some(Type::QpackDecoder)
+                    Some(Type::Control)
+                        | Some(Type::QpackEncoder)
+                        | Some(Type::QpackDecoder)
                 ) {
                     super::close_conn_critical_stream(conn)?;
                 }
@@ -703,9 +718,10 @@ impl Stream {
             // A peer can influence the size of the state buffer (e.g. with the
             // payload size of a GREASE frame), so we need to limit the maximum
             // size to avoid DoS.
-            if expected_len > MAX_STATE_BUF_SIZE {
-                return Err(Error::ExcessiveLoad);
-            }
+            /* PATCH */
+            // if expected_len > MAX_STATE_BUF_SIZE {
+            //     return Err(Error::ExcessiveLoad);
+            // }
 
             self.state_buf.resize(expected_len, 0);
         }

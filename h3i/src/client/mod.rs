@@ -36,6 +36,7 @@ pub mod connection_summary;
 pub mod sync_client;
 
 use connection_summary::*;
+use log::debug;
 use qlog::events::h3::HttpHeader;
 
 use std::collections::HashMap;
@@ -94,7 +95,7 @@ pub enum ClientError {
     Other(String),
 }
 
-pub(crate) trait Client {
+pub trait Client {
     /// Gives mutable access to the stream parsers to update their state.
     fn stream_parsers_mut(&mut self) -> &mut StreamParserMap;
 
@@ -103,9 +104,58 @@ pub(crate) trait Client {
     fn handle_response_frame(&mut self, stream_id: u64, frame: H3iFrame);
 }
 
-pub(crate) type StreamParserMap = HashMap<u64, FrameParser>;
+pub type StreamParserMap = HashMap<u64, FrameParser>;
 
-pub(crate) fn execute_action(
+fn ensure_stream_parser(stream_id: u64, stream_parsers: &mut StreamParserMap) {
+    stream_parsers
+        .entry(stream_id)
+        .or_insert_with(|| FrameParser::new(stream_id));
+}
+
+fn try_send_stream_bytes(
+    conn: &mut quiche::Connection, stream_id: u64, bytes: &[u8], fin_stream: bool,
+    stream_parsers: &mut StreamParserMap,
+) -> bool {
+    match conn.stream_send(stream_id, bytes, fin_stream) {
+        Ok(written) => {
+            ensure_stream_parser(stream_id, stream_parsers);
+
+            if written != bytes.len() {
+                debug!(
+                    "partial stream_send on stream {stream_id}: wrote {written} of {} bytes",
+                    bytes.len()
+                );
+            }
+
+            true
+        },
+
+        Err(quiche::Error::Done) => {
+            debug!(
+                "stream_send blocked on stream {stream_id}: pending_bytes={}, stream_capacity={:?}",
+                bytes.len(),
+                conn.stream_capacity(stream_id).ok()
+            );
+            false
+        },
+
+        Err(quiche::Error::StreamLimit) => {
+            debug!(
+                "stream_send blocked on stream {stream_id} by peer stream limit: bidi_left={} uni_left={}",
+                conn.peer_streams_left_bidi(),
+                conn.peer_streams_left_uni()
+            );
+            false
+        },
+
+        Err(e) => {
+            log::warn!("stream_send failed on stream {stream_id}: {e:?}");
+            false
+        },
+    }
+}
+
+pub fn execute_action(
     action: &Action, conn: &mut quiche::Connection,
     stream_parsers: &mut StreamParserMap,
 ) {
@@ -115,7 +165,7 @@ pub(crate) fn execute_action(
             fin_stream,
             frame,
         } => {
-            log::info!("frame tx id={stream_id} frame={frame:?}");
+            log::debug!("frame tx id={:?} frame={:?}", stream_id, frame);
 
             // TODO: make serialization smarter
             let mut d = [42; 9999];
@@ -139,24 +189,31 @@ pub(crate) fn execute_action(
                             // need to rewrite the event time
                             ev.time = Instant::now()
                                 .duration_since(s.start_time())
-                                .as_secs_f32() *
-                                1000.0;
+                                .as_secs_f32()
+                                * 1000.0;
                             s.add_event(ev).ok();
                         },
                     }
                 }
             }
-            let len = frame.to_bytes(&mut b).unwrap();
+            let len = match frame.to_bytes(&mut b) {
+                Ok(len) => len,
+
+                Err(e) => {
+                    log::warn!(
+                        "failed to serialize frame for stream {}: {:?}",
+                        stream_id,
+                        e
+                    );
+                    return;
+                },
+            };
 
             // TODO - pass errors here to the connectionsummary, which means we
             // can't initialize it when the connection's been shut
             // down
-            conn.stream_send(*stream_id, &d[..len], *fin_stream)
-                .unwrap();
-
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+            let _ =
+                try_send_stream_bytes(conn, *stream_id, &d[..len], *fin_stream, stream_parsers);
         },
 
         Action::SendHeadersFrame {
@@ -190,20 +247,37 @@ pub(crate) fn execute_action(
                             // need to rewrite the event time
                             ev.time = Instant::now()
                                 .duration_since(s.start_time())
-                                .as_secs_f32() *
-                                1000.0;
+                                .as_secs_f32()
+                                * 1000.0;
                             s.add_event(ev).ok();
                         },
                     }
                 }
             }
-            let len = frame.to_bytes(&mut b).unwrap();
-            conn.stream_send(*stream_id, &d[..len], *fin_stream)
-                .unwrap();
+            let len = match frame.to_bytes(&mut b) {
+                Ok(len) => len,
 
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+                Err(e) => {
+                    log::warn!(
+                        "failed to serialize headers frame for stream {}: {:?}",
+                        stream_id,
+                        e
+                    );
+                    return;
+                },
+            };
+
+            if try_send_stream_bytes(
+                conn,
+                *stream_id,
+                &d[..len],
+                *fin_stream,
+                stream_parsers,
+            ) {
+                debug!("sent headers frame on stream {stream_id}");
+            } else {
+                debug!("failed to send headers frame on stream {stream_id}");
+            }
         },
 
         Action::OpenUniStream {
@@ -217,15 +291,19 @@ pub(crate) fn execute_action(
 
             let mut d = [42; 8];
             let mut b = octets::OctetsMut::with_slice(&mut d);
-            b.put_varint(*stream_type).unwrap();
+            if let Err(e) = b.put_varint(*stream_type) {
+                log::warn!(
+                    "failed to encode unidirectional stream type {} on stream {}: {:?}",
+                    stream_type,
+                    stream_id,
+                    e
+                );
+                return;
+            }
             let off = b.off();
 
-            conn.stream_send(*stream_id, &d[..off], *fin_stream)
-                .unwrap();
-
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+            let _ =
+                try_send_stream_bytes(conn, *stream_id, &d[..off], *fin_stream, stream_parsers);
         },
 
         Action::StreamBytes {
@@ -239,11 +317,13 @@ pub(crate) fn execute_action(
                 bytes.len(),
                 fin_stream
             );
-            conn.stream_send(*stream_id, bytes, *fin_stream).unwrap();
-
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+            let _ = try_send_stream_bytes(
+                conn,
+                *stream_id,
+                bytes,
+                *fin_stream,
+                stream_parsers,
+            );
         },
 
         Action::ResetStream {
@@ -265,9 +345,7 @@ pub(crate) fn execute_action(
                 return;
             }
 
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+            ensure_stream_parser(*stream_id, stream_parsers);
         },
 
         Action::StopSending {
@@ -288,9 +366,7 @@ pub(crate) fn execute_action(
 
             // A `STOP_SENDING` should elicit a `RESET_STREAM` in response, which
             // the frame parser can automatically handle.
-            stream_parsers
-                .entry(*stream_id)
-                .or_insert_with(|| FrameParser::new(*stream_id));
+            ensure_stream_parser(*stream_id, stream_parsers);
         },
 
         Action::ConnectionClose { error } => {
@@ -309,7 +385,7 @@ pub(crate) fn execute_action(
     }
 }
 
-pub(crate) fn parse_streams<C: Client>(
+pub fn parse_streams<C: Client>(
     conn: &mut quiche::Connection, client: &mut C,
 ) -> Vec<StreamEvent> {
     let mut responded_streams: Vec<StreamEvent> =

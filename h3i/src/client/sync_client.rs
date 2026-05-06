@@ -310,8 +310,8 @@ pub fn connect(
 
         // Create a new application protocol session once the QUIC connection is
         // established.
-        if (conn.is_established() || conn.is_in_early_data()) &&
-            !app_proto_selected
+        if (conn.is_established() || conn.is_in_early_data())
+            && !app_proto_selected
         {
             app_proto_selected = true;
         }
@@ -367,7 +367,6 @@ pub fn connect(
         // Generate outgoing QUIC packets and send them on the UDP socket, until
         // quiche reports that there are no more packets to be sent.
         let sockets = vec![&socket];
-
         for socket in sockets {
             let local_addr = socket.local_addr().unwrap();
 

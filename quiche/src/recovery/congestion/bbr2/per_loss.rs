@@ -94,8 +94,8 @@ fn bbr2_inflight_hi_from_lost_packet(r: &mut Congestion, packet: &Sent) -> usize
     let size = packet.size;
     let inflight_prev = r.bbr2_state.tx_in_flight - size;
     let lost_prev = r.bbr2_state.lost - size;
-    let lost_prefix = (LOSS_THRESH * inflight_prev as f64 - lost_prev as f64) /
-        (1.0 - LOSS_THRESH);
+    let lost_prefix = (LOSS_THRESH * inflight_prev as f64 - lost_prev as f64)
+        / (1.0 - LOSS_THRESH);
 
     inflight_prev + lost_prefix as usize
 }
@@ -210,7 +210,7 @@ pub fn bbr2_bound_bw_for_model(r: &mut Congestion) {
 fn bbr2_is_probing_bw(r: &mut Congestion) -> bool {
     let state = r.bbr2_state.state;
 
-    state == BBR2StateMachine::Startup ||
-        state == BBR2StateMachine::ProbeBWREFILL ||
-        state == BBR2StateMachine::ProbeBWUP
+    state == BBR2StateMachine::Startup
+        || state == BBR2StateMachine::ProbeBWREFILL
+        || state == BBR2StateMachine::ProbeBWUP
 }

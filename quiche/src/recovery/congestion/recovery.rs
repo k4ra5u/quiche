@@ -243,8 +243,8 @@ impl RecoveryEpoch {
 
         for unacked in unacked_iter {
             // Mark packet as lost, or set time when it should be marked.
-            if unacked.time_sent <= lost_send_time ||
-                largest_acked >= unacked.pkt_num + pkt_thresh
+            if unacked.time_sent <= lost_send_time
+                || largest_acked >= unacked.pkt_num + pkt_thresh
             {
                 self.lost_frames.extend(unacked.frames.drain(..));
 
@@ -280,8 +280,9 @@ impl RecoveryEpoch {
                 let loss_time = match self.loss_time {
                     None => unacked.time_sent + loss_delay,
 
-                    Some(loss_time) =>
-                        cmp::min(loss_time, unacked.time_sent + loss_delay),
+                    Some(loss_time) => {
+                        cmp::min(loss_time, unacked.time_sent + loss_delay)
+                    },
                 };
 
                 self.loss_time = Some(loss_time);
@@ -482,8 +483,8 @@ impl LegacyRecovery {
             return;
         }
 
-        if self.bytes_in_flight.is_zero() &&
-            handshake_status.peer_verified_address
+        if self.bytes_in_flight.is_zero()
+            && handshake_status.peer_verified_address
         {
             self.loss_timer.clear();
             return;
@@ -543,9 +544,9 @@ impl RecoveryOps for LegacyRecovery {
     /// Returns whether or not we should elicit an ACK even if we wouldn't
     /// otherwise have constructed an ACK eliciting packet.
     fn should_elicit_ack(&self, epoch: Epoch) -> bool {
-        self.epochs[epoch].loss_probes > 0 ||
-            self.outstanding_non_ack_eliciting >=
-                MAX_OUTSTANDING_NON_ACK_ELICITING
+        self.epochs[epoch].loss_probes > 0
+            || self.outstanding_non_ack_eliciting
+                >= MAX_OUTSTANDING_NON_ACK_ELICITING
     }
 
     fn get_acked_frames(&mut self, epoch: Epoch) -> Vec<frame::Frame> {
@@ -680,8 +681,8 @@ impl RecoveryOps for LegacyRecovery {
         self.epochs[epoch].largest_acked_packet = Some(largest_acked_pkt_num);
 
         // Check if largest packet is newly acked.
-        if largest_newly_acked.pkt_num == largest_acked_pkt_num &&
-            has_ack_eliciting
+        if largest_newly_acked.pkt_num == largest_acked_pkt_num
+            && has_ack_eliciting
         {
             let latest_rtt = now - largest_newly_acked.time_sent;
             self.rtt_stats.update_rtt(
@@ -844,8 +845,8 @@ impl RecoveryOps for LegacyRecovery {
         }
 
         // Open more space (snd_cnt) for PRR when allowed.
-        self.cwnd().saturating_sub(self.bytes_in_flight.get()) +
-            self.congestion.prr.snd_cnt
+        self.cwnd().saturating_sub(self.bytes_in_flight.get())
+            + self.congestion.prr.snd_cnt
     }
 
     fn rtt(&self) -> Duration {
@@ -890,12 +891,12 @@ impl RecoveryOps for LegacyRecovery {
     fn pmtud_update_max_datagram_size(&mut self, new_max_datagram_size: usize) {
         // Congestion Window is updated only when it's not updated already.
         // Update cwnd if it hasn't been updated yet.
-        if self.cwnd() ==
-            self.max_datagram_size *
-                self.congestion.initial_congestion_window_packets
+        if self.cwnd()
+            == self.max_datagram_size
+                * self.congestion.initial_congestion_window_packets
         {
-            self.congestion.congestion_window = new_max_datagram_size *
-                self.congestion.initial_congestion_window_packets;
+            self.congestion.congestion_window = new_max_datagram_size
+                * self.congestion.initial_congestion_window_packets;
         }
 
         self.congestion.pacer = pacer::Pacer::new(

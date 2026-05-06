@@ -69,8 +69,9 @@ impl<T> ConnectionStateMap<T> {
         // Use binary search
         let ret =
             match self.packet_map.binary_search_by_key(&pkt_num, |&(n, _)| n) {
-                Ok(found) =>
-                    self.packet_map.get_mut(found).and_then(|(_, v)| v.take()),
+                Ok(found) => {
+                    self.packet_map.get_mut(found).and_then(|(_, v)| v.take())
+                },
                 Err(_) => None,
             };
 
@@ -349,9 +350,9 @@ impl MaxAckHeightTracker {
 
         // If any packet sent after the start of the epoch has been acked, start a
         // new epoch.
-        if self.start_new_aggregation_epoch_after_full_round &&
-            last_acked_packet_number >
-                self.last_sent_packet_number_before_epoch
+        if self.start_new_aggregation_epoch_after_full_round
+            && last_acked_packet_number
+                > self.last_sent_packet_number_before_epoch
         {
             force_new_epoch = true;
         }
@@ -375,9 +376,9 @@ impl MaxAckHeightTracker {
             bandwidth_estimate.to_bytes_per_period(aggregation_delta) as usize;
         // Reset the current aggregation epoch as soon as the ack arrival rate is
         // less than or equal to the max bandwidth.
-        if self.aggregation_epoch_bytes <=
-            (self.ack_aggregation_bandwidth_threshold *
-                expected_bytes_acked as f64) as usize
+        if self.aggregation_epoch_bytes
+            <= (self.ack_aggregation_bandwidth_threshold
+                * expected_bytes_acked as f64) as usize
         {
             // Reset to start measuring a new aggregation epoch.
             self.aggregation_epoch_bytes = bytes_acked;
@@ -439,8 +440,8 @@ impl From<(Instant, usize, usize, &BandwidthSampler)>
 impl RecentAckPoints {
     fn update(&mut self, ack_time: Instant, total_bytes_acked: usize) {
         assert!(
-            total_bytes_acked >=
-                self.ack_points[1].map(|p| p.total_bytes_acked).unwrap_or(0)
+            total_bytes_acked
+                >= self.ack_points[1].map(|p| p.total_bytes_acked).unwrap_or(0)
         );
 
         self.ack_points[0] = self.ack_points[1];
@@ -608,8 +609,8 @@ impl BandwidthSampler {
             }
             max_send_rate = max_send_rate.max(sample.send_rate);
 
-            let inflight_sample = self.total_bytes_acked -
-                last_acked_packet_send_state.total_bytes_acked;
+            let inflight_sample = self.total_bytes_acked
+                - last_acked_packet_send_state.total_bytes_acked;
             if inflight_sample > event_sample.sample_max_inflight {
                 event_sample.sample_max_inflight = inflight_sample;
             }
@@ -726,8 +727,8 @@ impl BandwidthSampler {
             // packets are sent while there are buffered packets or pending data.
             // (2) The current acked packet is after the sent packet marked as the
             // end of the app limit phase.
-            if self.end_of_app_limited_phase.is_none() ||
-                Some(packet_number) > self.end_of_app_limited_phase
+            if self.end_of_app_limited_phase.is_none()
+                || Some(packet_number) > self.end_of_app_limited_phase
             {
                 self.is_app_limited = false;
             }
@@ -735,12 +736,12 @@ impl BandwidthSampler {
 
         // No send rate indicates that the sampler is supposed to discard the
         // current send rate sample and use only the ack rate.
-        let send_rate = if sent_packet.sent_time >
-            sent_packet.last_acked_packet_sent_time
+        let send_rate = if sent_packet.sent_time
+            > sent_packet.last_acked_packet_sent_time
         {
             Some(Bandwidth::from_bytes_and_time_delta(
-                sent_packet.send_time_state.total_bytes_sent -
-                    sent_packet.total_bytes_sent_at_last_acked_packet,
+                sent_packet.send_time_state.total_bytes_sent
+                    - sent_packet.total_bytes_sent_at_last_acked_packet,
                 sent_packet.sent_time - sent_packet.last_acked_packet_sent_time,
             ))
         } else {
@@ -1170,9 +1171,9 @@ mod bandwidth_sampler_tests {
 
             // This equation works because there is no neutered bytes.
             assert_eq!(
-                send_time_state.total_bytes_sent -
-                    send_time_state.total_bytes_acked -
-                    send_time_state.total_bytes_lost,
+                send_time_state.total_bytes_sent
+                    - send_time_state.total_bytes_acked
+                    - send_time_state.total_bytes_lost,
                 send_time_state.bytes_in_flight
             );
 
@@ -1773,8 +1774,8 @@ mod max_ack_height_tracker_tests {
 
             // The total duration of aggregation time and quiet period.
             let total_duration = Duration::from_micros(
-                (aggregation_bytes as u64 * 8 * 1000000) /
-                    self.bandwidth.to_bits_per_second(),
+                (aggregation_bytes as u64 * 8 * 1000000)
+                    / self.bandwidth.to_bits_per_second(),
             );
 
             assert_eq!(aggregation_bytes as u64, self.bandwidth * total_duration);
@@ -1796,8 +1797,8 @@ mod max_ack_height_tracker_tests {
                 // and the     the current tracker implementation
                 // can identify it, or [2] We are not really
                 // aggregating acks.
-                if (bytes == 0 && expect_new_aggregation_epoch) ||
-                    (aggregation_bandwidth == self.bandwidth)
+                if (bytes == 0 && expect_new_aggregation_epoch)
+                    || (aggregation_bandwidth == self.bandwidth)
                 {
                     assert_eq!(0, extra_acked);
                 } else {

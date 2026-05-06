@@ -27,6 +27,7 @@
 /// Zero-copy abstraction for parsing and constructing network packets.
 use std::mem;
 use std::ptr;
+use log::{error, info,debug,warn};
 
 /// A specialized [`Result`] type for [`OctetsMut`] operations.
 ///
@@ -187,6 +188,7 @@ impl<'a> Octets<'a> {
         let len = varint_parse_len(first);
 
         if len > self.cap() {
+            log::info!("buffer too short: {:?}", self);
             return Err(BufferTooShortError);
         }
 
@@ -449,6 +451,7 @@ impl<'a> OctetsMut<'a> {
         &mut self, v: u64, len: usize,
     ) -> Result<&mut [u8]> {
         if self.cap() < len {
+            // info!("put_varint_with_len: buffer too short:{:?},len:{:?},value:{:?}", self,len,v);
             return Err(BufferTooShortError);
         }
 
@@ -572,6 +575,7 @@ impl<'a> OctetsMut<'a> {
         let len = v.len();
 
         if self.cap() < len {
+            info!("put_bytes: buffer too short:{:?}", self);
             return Err(BufferTooShortError);
         }
 

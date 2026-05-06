@@ -50,7 +50,7 @@ use crate::encode_header_block_literal;
 /// sequentially. Note that packets will be flushed when said iteration has
 /// completed, regardless of if an [`Action::FlushPackets`] was the terminal
 /// action.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq,Serialize,Deserialize)]
 pub enum Action {
     /// Send a [quiche::h3::frame::Frame] over a stream.
     SendFrame {
@@ -156,21 +156,21 @@ pub enum StreamEventType {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct WaitingFor(HashMap<u64, Vec<StreamEvent>>);
+pub struct WaitingFor(HashMap<u64, Vec<StreamEvent>>);
 
 impl WaitingFor {
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.0.values().all(|v| v.is_empty())
     }
 
-    pub(crate) fn add_wait(&mut self, stream_event: &StreamEvent) {
+    pub fn add_wait(&mut self, stream_event: &StreamEvent) {
         self.0
             .entry(stream_event.stream_id)
             .or_default()
             .push(*stream_event);
     }
 
-    pub(crate) fn remove_wait(&mut self, stream_event: StreamEvent) {
+    pub fn remove_wait(&mut self, stream_event: StreamEvent) {
         if let Some(waits) = self.0.get_mut(&stream_event.stream_id) {
             let old_len = waits.len();
             waits.retain(|wait| wait != &stream_event);
@@ -182,7 +182,7 @@ impl WaitingFor {
         }
     }
 
-    pub(crate) fn clear_waits_on_stream(&mut self, stream_id: u64) {
+    pub fn clear_waits_on_stream(&mut self, stream_id: u64) {
         if let Some(waits) = self.0.get_mut(&stream_id) {
             if !waits.is_empty() {
                 log::info!("Clearing all waits for stream {stream_id}");

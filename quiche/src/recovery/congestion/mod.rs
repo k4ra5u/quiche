@@ -135,8 +135,8 @@ pub struct Congestion {
 
 impl Congestion {
     pub(crate) fn from_config(recovery_config: &RecoveryConfig) -> Self {
-        let initial_congestion_window = recovery_config.max_send_udp_payload_size *
-            recovery_config.initial_congestion_window_packets;
+        let initial_congestion_window = recovery_config.max_send_udp_payload_size
+            * recovery_config.initial_congestion_window_packets;
 
         let mut cc = Congestion {
             congestion_window: initial_congestion_window,
@@ -192,8 +192,9 @@ impl Congestion {
 
     pub(crate) fn in_congestion_recovery(&self, sent_time: Instant) -> bool {
         match self.congestion_recovery_start_time {
-            Some(congestion_recovery_start_time) =>
-                sent_time <= congestion_recovery_start_time,
+            Some(congestion_recovery_start_time) => {
+                sent_time <= congestion_recovery_start_time
+            },
 
             None => false,
         }
@@ -235,8 +236,8 @@ impl Congestion {
             self.prr.on_packet_sent(sent_bytes);
 
             // HyStart++: Start of the round in a slow start.
-            if self.hystart.enabled() &&
-                self.congestion_window < self.ssthresh.get()
+            if self.hystart.enabled()
+                && self.congestion_window < self.ssthresh.get()
             {
                 self.hystart.start_round(pkt.pkt_num);
             }
@@ -244,8 +245,8 @@ impl Congestion {
 
         // Pacing: Set the pacing rate if CC doesn't do its own.
         if !(self.cc_ops.has_custom_pacing)() && rtt_stats.has_first_rtt_sample {
-            let rate = PACING_MULTIPLIER * self.congestion_window as f64 /
-                rtt_stats.smoothed_rtt.as_secs_f64();
+            let rate = PACING_MULTIPLIER * self.congestion_window as f64
+                / rtt_stats.smoothed_rtt.as_secs_f64();
             self.set_pacing_rate(rate as u64, now);
         }
 
@@ -285,8 +286,8 @@ impl Congestion {
         //   * Packet contains no data.
         //   * The congestion window is within initcwnd.
 
-        let in_initcwnd = self.congestion_window <
-            self.max_datagram_size * self.initial_congestion_window_packets;
+        let in_initcwnd = self.congestion_window
+            < self.max_datagram_size * self.initial_congestion_window_packets;
 
         let sent_bytes = if !self.pacer.enabled() || in_initcwnd {
             0

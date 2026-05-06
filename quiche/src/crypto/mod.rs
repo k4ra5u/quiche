@@ -41,10 +41,10 @@ pub const HP_MASK_LEN: usize = 5;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Level {
-    Initial   = 0,
-    ZeroRTT   = 1,
+    Initial = 0,
+    ZeroRTT = 1,
     Handshake = 2,
-    OneRTT    = 3,
+    OneRTT = 3,
 }
 
 impl Level {
@@ -124,7 +124,7 @@ struct EVP_MD {
 }
 
 type HeaderProtectionMask = [u8; HP_MASK_LEN];
-
+#[derive(Debug)]
 pub struct Open {
     alg: Algorithm,
 
@@ -207,7 +207,7 @@ impl Open {
         self.packet.open_with_u64_counter(counter, ad, buf)
     }
 }
-
+#[derive(Debug)]
 pub struct Seal {
     alg: Algorithm,
 

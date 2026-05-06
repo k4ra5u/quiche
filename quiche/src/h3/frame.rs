@@ -28,6 +28,7 @@ use super::Result;
 
 #[cfg(feature = "qlog")]
 use qlog::events::h3::Http3Frame;
+use serde::{Deserialize, Serialize};
 
 pub const DATA_FRAME_TYPE_ID: u64 = 0x0;
 pub const HEADERS_FRAME_TYPE_ID: u64 = 0x1;
@@ -49,7 +50,7 @@ pub const SETTINGS_H3_DATAGRAM: u64 = 0x33;
 // Permit between 16 maximally-encoded and 128 minimally-encoded SETTINGS.
 const MAX_SETTINGS_PAYLOAD_SIZE: usize = 256;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Frame {
     Data {
         payload: Vec<u8>,
@@ -123,11 +124,13 @@ impl Frame {
                 push_id: b.get_varint()?,
             },
 
-            SETTINGS_FRAME_TYPE_ID =>
-                parse_settings_frame(&mut b, payload_length as usize)?,
+            SETTINGS_FRAME_TYPE_ID => {
+                parse_settings_frame(&mut b, payload_length as usize)?
+            },
 
-            PUSH_PROMISE_FRAME_TYPE_ID =>
-                parse_push_promise(payload_length, &mut b)?,
+            PUSH_PROMISE_FRAME_TYPE_ID => {
+                parse_push_promise(payload_length, &mut b)?
+            },
 
             GOAWAY_FRAME_TYPE_ID => Frame::GoAway {
                 id: b.get_varint()?,
@@ -137,9 +140,10 @@ impl Frame {
                 push_id: b.get_varint()?,
             },
 
-            PRIORITY_UPDATE_FRAME_REQUEST_TYPE_ID |
-            PRIORITY_UPDATE_FRAME_PUSH_TYPE_ID =>
-                parse_priority_update(frame_type, payload_length, &mut b)?,
+            PRIORITY_UPDATE_FRAME_REQUEST_TYPE_ID
+            | PRIORITY_UPDATE_FRAME_PUSH_TYPE_ID => {
+                parse_priority_update(frame_type, payload_length, &mut b)?
+            },
 
             _ => Frame::Unknown {
                 raw_type: frame_type,
@@ -299,8 +303,8 @@ impl Frame {
                 prioritized_element_id,
                 priority_field_value,
             } => {
-                let len = octets::varint_len(*prioritized_element_id) +
-                    priority_field_value.len();
+                let len = octets::varint_len(*prioritized_element_id)
+                    + priority_field_value.len();
 
                 b.put_varint(PRIORITY_UPDATE_FRAME_REQUEST_TYPE_ID)?;
                 b.put_varint(len as u64)?;
@@ -313,8 +317,8 @@ impl Frame {
                 prioritized_element_id,
                 priority_field_value,
             } => {
-                let len = octets::varint_len(*prioritized_element_id) +
-                    priority_field_value.len();
+                let len = octets::varint_len(*prioritized_element_id)
+                    + priority_field_value.len();
 
                 b.put_varint(PRIORITY_UPDATE_FRAME_PUSH_TYPE_ID)?;
                 b.put_varint(len as u64)?;
@@ -346,8 +350,9 @@ impl Frame {
             // populate the field with an empty vec.
             Frame::Headers { .. } => Http3Frame::Headers { headers: vec![] },
 
-            Frame::CancelPush { push_id } =>
-                Http3Frame::CancelPush { push_id: *push_id },
+            Frame::CancelPush { push_id } => {
+                Http3Frame::CancelPush { push_id: *push_id }
+            },
 
             Frame::Settings {
                 max_field_section_size,
@@ -425,8 +430,9 @@ impl Frame {
 
             Frame::GoAway { id } => Http3Frame::Goaway { id: *id },
 
-            Frame::MaxPushId { push_id } =>
-                Http3Frame::MaxPushId { push_id: *push_id },
+            Frame::MaxPushId { push_id } => {
+                Http3Frame::MaxPushId { push_id: *push_id }
+            },
 
             Frame::PriorityUpdateRequest {
                 prioritized_element_id,
@@ -557,9 +563,10 @@ fn parse_settings_frame(
     let mut additional_settings: Option<Vec<(u64, u64)>> = None;
 
     // Reject SETTINGS frames that are too long.
-    if settings_length > MAX_SETTINGS_PAYLOAD_SIZE {
-        return Err(super::Error::ExcessiveLoad);
-    }
+    /* PATCH */
+    // if settings_length > MAX_SETTINGS_PAYLOAD_SIZE {
+    //     return Err(super::Error::ExcessiveLoad);
+    // }
 
     while b.off() < settings_length {
         let identifier = b.get_varint()?;
@@ -599,8 +606,9 @@ fn parse_settings_frame(
             },
 
             // Reserved values overlap with HTTP/2 and MUST be rejected
-            0x0 | 0x2 | 0x3 | 0x4 | 0x5 =>
-                return Err(super::Error::SettingsError),
+            0x0 | 0x2 | 0x3 | 0x4 | 0x5 => {
+                return Err(super::Error::SettingsError)
+            },
 
             // Unknown Settings parameters go into additional_settings.
             _ => {
@@ -646,11 +654,12 @@ fn parse_priority_update(
         b.get_bytes(priority_field_value_length as usize)?.to_vec();
 
     match frame_type {
-        PRIORITY_UPDATE_FRAME_REQUEST_TYPE_ID =>
+        PRIORITY_UPDATE_FRAME_REQUEST_TYPE_ID => {
             Ok(Frame::PriorityUpdateRequest {
                 prioritized_element_id,
                 priority_field_value,
-            }),
+            })
+        },
 
         PRIORITY_UPDATE_FRAME_PUSH_TYPE_ID => Ok(Frame::PriorityUpdatePush {
             prioritized_element_id,

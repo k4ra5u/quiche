@@ -155,9 +155,9 @@ impl Bandwidth {
     }
 
     pub fn to_bytes_per_period(self, time_period: Duration) -> u64 {
-        self.bits_per_second * time_period.as_nanos() as u64 /
-            8 /
-            NUM_NANOS_PER_SECOND
+        self.bits_per_second * time_period.as_nanos() as u64
+            / 8
+            / NUM_NANOS_PER_SECOND
     }
 }
 
@@ -298,57 +298,84 @@ mod tests {
             "0.00 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 12
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 12
+                }
+            ),
             "0.01 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 123
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 123
+                }
+            ),
             "0.12 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 1234
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 1234
+                }
+            ),
             "1.23 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 12345
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 12345
+                }
+            ),
             "12.35 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 123456
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 123456
+                }
+            ),
             "123.46 Kbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 1234567
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 1234567
+                }
+            ),
             "1.23 Mbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 12345678
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 12345678
+                }
+            ),
             "12.35 Mbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 123456789
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 123456789
+                }
+            ),
             "123.46 Mbps"
         );
         assert_eq!(
-            format!("{:?}", Bandwidth {
-                bits_per_second: 1234567890
-            }),
+            format!(
+                "{:?}",
+                Bandwidth {
+                    bits_per_second: 1234567890
+                }
+            ),
             "1.23 Gbps"
         );
     }

@@ -384,9 +384,9 @@
 extern crate log;
 /* PATCH */
 use frame::Frame;
+use log::{debug, error, info, warn};
 use serde::Deserialize;
 use serde::Serialize;
-use log::{error, info,debug,warn};
 use std::cmp;
 
 use std::collections::HashSet;
@@ -427,6 +427,18 @@ use qlog::events::RawInfo;
 use smallvec::SmallVec;
 
 use crate::range_buf::DefaultBufFactory;
+
+fn mercuriuzz_quiche_log_enabled(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
 
 use crate::recovery::OnAckReceivedOutcome;
 use crate::recovery::OnLossDetectionTimeoutOutcome;
@@ -613,32 +625,32 @@ pub enum Error {
 pub enum WireErrorCode {
     /// An endpoint uses this with CONNECTION_CLOSE to signal that the
     /// connection is being closed abruptly in the absence of any error.
-    NoError              = 0x0,
+    NoError = 0x0,
     /// The endpoint encountered an internal error and cannot continue with the
     /// connection.
-    InternalError        = 0x1,
+    InternalError = 0x1,
     /// The server refused to accept a new connection.
-    ConnectionRefused    = 0x2,
+    ConnectionRefused = 0x2,
     /// An endpoint received more data than it permitted in its advertised data
     /// limits; see Section 4.
-    FlowControlError     = 0x3,
+    FlowControlError = 0x3,
     /// An endpoint received a frame for a stream identifier that exceeded its
     /// advertised stream limit for the corresponding stream type.
-    StreamLimitError     = 0x4,
+    StreamLimitError = 0x4,
     /// An endpoint received a frame for a stream that was not in a state that
     /// permitted that frame.
-    StreamStateError     = 0x5,
+    StreamStateError = 0x5,
     /// (1) An endpoint received a STREAM frame containing data that exceeded
     /// the previously established final size, (2) an endpoint received a
     /// STREAM frame or a RESET_STREAM frame containing a final size that
     /// was lower than the size of stream data that was already received, or
     /// (3) an endpoint received a STREAM frame or a RESET_STREAM frame
     /// containing a different final size to the one already established.
-    FinalSizeError       = 0x6,
+    FinalSizeError = 0x6,
     /// An endpoint received a frame that was badly formatted -- for instance, a
     /// frame of an unknown type or an ACK frame that has more
     /// acknowledgment ranges than the remainder of the packet could carry.
-    FrameEncodingError   = 0x7,
+    FrameEncodingError = 0x7,
     /// An endpoint received transport parameters that were badly formatted,
     /// included an invalid value, omitted a mandatory transport parameter,
     /// included a forbidden transport parameter, or were otherwise in
@@ -651,25 +663,25 @@ pub enum WireErrorCode {
     ConnectionIdLimitError = 0x9,
     /// An endpoint detected an error with protocol compliance that was not
     /// covered by more specific error codes.
-    ProtocolViolation    = 0xa,
+    ProtocolViolation = 0xa,
     /// A server received a client Initial that contained an invalid Token
     /// field.
-    InvalidToken         = 0xb,
+    InvalidToken = 0xb,
     /// The application or application protocol caused the connection to be
     /// closed.
-    ApplicationError     = 0xc,
+    ApplicationError = 0xc,
     /// An endpoint has received more data in CRYPTO frames than it can buffer.
     CryptoBufferExceeded = 0xd,
     /// An endpoint detected errors in performing key updates.
-    KeyUpdateError       = 0xe,
+    KeyUpdateError = 0xe,
     /// An endpoint has reached the confidentiality or integrity limit for the
     /// AEAD algorithm used by the given connection.
-    AeadLimitReached     = 0xf,
+    AeadLimitReached = 0xf,
     /// An endpoint has determined that the network path is incapable of
     /// supporting QUIC. An endpoint is unlikely to receive a
     /// CONNECTION_CLOSE frame carrying this code except when the path does
     /// not support a large enough MTU.
-    NoViablePath         = 0x10,
+    NoViablePath = 0x10,
 }
 
 impl Error {
@@ -678,16 +690,19 @@ impl Error {
         match self {
             Error::Done => WireErrorCode::NoError as u64,
             Error::InvalidFrame => WireErrorCode::FrameEncodingError as u64,
-            Error::InvalidStreamState(..) =>
-                WireErrorCode::StreamStateError as u64,
-            Error::InvalidTransportParam =>
-                WireErrorCode::TransportParameterError as u64,
+            Error::InvalidStreamState(..) => {
+                WireErrorCode::StreamStateError as u64
+            },
+            Error::InvalidTransportParam => {
+                WireErrorCode::TransportParameterError as u64
+            },
             Error::FlowControl => WireErrorCode::FlowControlError as u64,
             Error::StreamLimit => WireErrorCode::StreamLimitError as u64,
             Error::IdLimit => WireErrorCode::ConnectionIdLimitError as u64,
             Error::FinalSize => WireErrorCode::FinalSizeError as u64,
-            Error::CryptoBufferExceeded =>
-                WireErrorCode::CryptoBufferExceeded as u64,
+            Error::CryptoBufferExceeded => {
+                WireErrorCode::CryptoBufferExceeded as u64
+            },
             Error::KeyUpdate => WireErrorCode::KeyUpdateError as u64,
             _ => WireErrorCode::ProtocolViolation as u64,
         }
@@ -740,9 +755,10 @@ impl From<octets::BufferTooShortError> for Error {
     }
 }
 /* PATCH */
-#[derive(Clone, Debug, Eq, PartialEq,Serialize,Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FrameWithPkn {
     pub pkn: u64,
+    pub packet_type: String,
     pub frame: Frame,
 }
 
@@ -774,7 +790,7 @@ pub struct SendInfo {
 }
 
 /// Represents information carried by `CONNECTION_CLOSE` frames.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionError {
     /// Whether the error came from the application or the transport layer.
     pub is_app: bool,
@@ -795,7 +811,7 @@ pub struct ConnectionError {
 #[derive(PartialEq, Eq)]
 pub enum Shutdown {
     /// Stop receiving stream data.
-    Read  = 0,
+    Read = 0,
 
     /// Stop sending stream data.
     Write = 1,
@@ -807,10 +823,10 @@ pub enum Shutdown {
 #[cfg_attr(docsrs, doc(cfg(feature = "qlog")))]
 pub enum QlogLevel {
     /// Logs any events of Core importance.
-    Core  = 0,
+    Core = 0,
 
     /// Logs any events of Core and Base importance.
-    Base  = 1,
+    Base = 1,
 
     /// Logs any events of Core, Base and Extra importance
     Extra = 2,
@@ -1516,6 +1532,30 @@ where
     /// Total number of sent packets.
     pub sent_count: usize,
 
+    /// Total number of sent Initial packets.
+    pub sent_initial_count: usize,
+
+    /// Total number of sent Handshake packets.
+    pub sent_handshake_count: usize,
+
+    /// Total number of sent 0-RTT packets.
+    pub sent_0rtt_count: usize,
+
+    /// Total number of sent Retry packets.
+    pub sent_retry_count: usize,
+
+    /// Total number of sent 1-RTT short-header packets.
+    pub sent_short_count: usize,
+
+    /// Total number of sent 1-RTT packets carrying application data.
+    pub sent_short_data_count: usize,
+
+    /// Total number of sent 1-RTT packets carrying no application data.
+    pub sent_short_control_count: usize,
+
+    /// Total number of sent ack-eliciting packets.
+    pub sent_ack_eliciting_count: usize,
+
     /// Total number of lost packets.
     pub lost_count: usize,
 
@@ -1954,6 +1994,7 @@ const QLOG_CONNECTION_CLOSED: EventType =
     EventType::ConnectivityEventType(ConnectivityEventType::ConnectionClosed);
 
 #[cfg(feature = "qlog")]
+
 struct QlogInfo {
     streamer: Option<qlog::streamer::QlogStreamer>,
     logged_peer_params: bool,
@@ -2072,6 +2113,14 @@ impl<F: BufFactory> Connection<F> {
 
             recv_count: 0,
             sent_count: 0,
+            sent_initial_count: 0,
+            sent_handshake_count: 0,
+            sent_0rtt_count: 0,
+            sent_retry_count: 0,
+            sent_short_count: 0,
+            sent_short_data_count: 0,
+            sent_short_control_count: 0,
+            sent_ack_eliciting_count: 0,
             lost_count: 0,
             spurious_lost_count: 0,
             retrans_count: 0,
@@ -2773,7 +2822,6 @@ impl<F: BufFactory> Connection<F> {
 
                     //     self.mark_closed();
                     // }
-
                     left
                 },
 
@@ -2801,8 +2849,10 @@ impl<F: BufFactory> Connection<F> {
     }
 
     /* PATCH */
-    pub fn recv2(&mut self, buf: &mut [u8], info: RecvInfo) -> Result<(usize,Vec<FrameWithPkn>)> {
-        let mut recv_frames: Vec<FrameWithPkn>  = Vec::new();
+    pub fn recv2(
+        &mut self, buf: &mut [u8], info: RecvInfo,
+    ) -> Result<(usize, Vec<FrameWithPkn>)> {
+        let mut recv_frames: Vec<FrameWithPkn> = Vec::new();
         let len = buf.len();
 
         if len == 0 {
@@ -2837,7 +2887,7 @@ impl<F: BufFactory> Connection<F> {
                 info,
             );
 
-            return Ok((len,recv_frames));
+            return Ok((len, recv_frames));
         }
 
         let mut done = 0;
@@ -2845,12 +2895,12 @@ impl<F: BufFactory> Connection<F> {
 
         // Process coalesced packets.
         while left > 0 {
-            let (read,read_frames) = match self.recv_single2(
+            let (read, read_frames) = match self.recv_single2(
                 &mut buf[len - left..len],
                 &info,
                 recv_pid,
             ) {
-                Ok((u,v)) => (u,v),
+                Ok((u, v)) => (u, v),
 
                 Err(Error::Done) => {
                     // If the packet can't be processed or decrypted, check if
@@ -2863,7 +2913,7 @@ impl<F: BufFactory> Connection<F> {
                     //     self.mark_closed();
                     // }
 
-                    (left,Vec::new())
+                    (left, Vec::new())
                 },
 
                 Err(e) => {
@@ -2873,7 +2923,7 @@ impl<F: BufFactory> Connection<F> {
                     // Do not close conn
                     // self.close(false, e.to_wire(), b"").ok();
                     // return Err(e);
-                    (left,Vec::new())
+                    (left, Vec::new())
                 },
             };
             for frame in read_frames {
@@ -2889,10 +2939,8 @@ impl<F: BufFactory> Connection<F> {
         // from the `recv()` method.
         self.process_undecrypted_0rtt_packets()?;
 
-        Ok((done,recv_frames.clone()))
+        Ok((done, recv_frames.clone()))
     }
- 
-
 
     /* PATCH */
     pub fn process_undecrypted_0rtt_packets(&mut self) -> Result<()> {
@@ -3216,9 +3264,9 @@ impl<F: BufFactory> Connection<F> {
             Some(v) => v,
 
             None => {
-                if hdr.ty == Type::ZeroRTT &&
-                    self.undecryptable_pkts.len() < MAX_UNDECRYPTABLE_PACKETS &&
-                    !self.is_established()
+                if hdr.ty == Type::ZeroRTT
+                    && self.undecryptable_pkts.len() < MAX_UNDECRYPTABLE_PACKETS
+                    && !self.is_established()
                 {
                     // Buffer 0-RTT packets when the required read key is not
                     // available yet, and process them later.
@@ -3272,9 +3320,9 @@ impl<F: BufFactory> Connection<F> {
         // Check for key update.
         let mut aead_next = None;
 
-        if self.handshake_confirmed &&
-            hdr.ty != Type::ZeroRTT &&
-            hdr.key_phase != self.key_phase
+        if self.handshake_confirmed
+            && hdr.ty != Type::ZeroRTT
+            && hdr.key_phase != self.key_phase
         {
             // Check if this packet arrived before key update.
             if let Some(key_update) = self.crypto_ctx[epoch]
@@ -3497,8 +3545,14 @@ impl<F: BufFactory> Connection<F> {
         });
 
         if let Some(e) = frame_processing_err {
-            // Any frame error is terminal, so now just return.
-            return Err(e);
+            // Keep already-decoded frames visible to the caller even when
+            // later frame processing fails, otherwise measurement code can
+            // miss frames (for example a PR preceding an invalid frame).
+            trace!(
+                "{} keeping decoded frames despite frame processing error: {:?}",
+                self.trace_id,
+                e
+            );
         }
 
         // Only log the remote transport parameters once the connection is
@@ -3525,7 +3579,7 @@ impl<F: BufFactory> Connection<F> {
                 match acked {
                     frame::Frame::Ping {
                         mtu_probe: Some(mtu_probe),
-                    } =>
+                    } => {
                         if let Some(pmtud) = p.pmtud.as_mut() {
                             trace!(
                                 "{} pmtud probe acked; probe size {:?}",
@@ -3566,7 +3620,8 @@ impl<F: BufFactory> Connection<F> {
                                 p.recovery
                                     .pmtud_update_max_datagram_size(current_mtu);
                             }
-                        },
+                        }
+                    },
 
                     frame::Frame::ACK { ranges, .. } => {
                         // Stop acknowledging packets less than or equal to the
@@ -3704,9 +3759,9 @@ impl<F: BufFactory> Connection<F> {
             // Did the peer migrated to another path?
             let active_path_id = self.paths.get_active_path_id()?;
 
-            if self.is_server &&
-                recv_pid != active_path_id &&
-                self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num == pn
+            if self.is_server
+                && recv_pid != active_path_id
+                && self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num == pn
             {
                 self.on_peer_migrated(recv_pid, self.disable_dcid_reuse, now)?;
             }
@@ -3727,6 +3782,22 @@ impl<F: BufFactory> Connection<F> {
         self.recv_bytes += read as u64;
         self.paths.get_mut(recv_pid)?.recv_bytes += read as u64;
 
+        if mercuriuzz_quiche_log_enabled("MERCURIUZZ_QUICHE_RX_LOG") {
+            info!(
+                "quiche rx: type={:?} epoch={:?} read={} ack_eliciting={} probing={} established={} handshake_completed={} recv_pkts={} from={} to={}",
+                hdr.ty,
+                epoch,
+                read,
+                ack_elicited,
+                probing,
+                self.is_established(),
+                self.handshake_completed,
+                self.recv_count,
+                info.from,
+                info.to,
+            );
+        }
+
         // An Handshake packet has been received from the client and has been
         // successfully processed, so we can drop the initial state and consider
         // the client's address to be verified.
@@ -3744,7 +3815,7 @@ impl<F: BufFactory> Connection<F> {
     /* PATCH */
     pub fn recv_single2(
         &mut self, buf: &mut [u8], info: &RecvInfo, recv_pid: Option<usize>,
-    ) -> Result<(usize,Vec<FrameWithPkn>)> {
+    ) -> Result<(usize, Vec<FrameWithPkn>)> {
         let now = Instant::now();
 
         /* PATCH */
@@ -4007,9 +4078,9 @@ impl<F: BufFactory> Connection<F> {
             Some(v) => v,
 
             None => {
-                if hdr.ty == Type::ZeroRTT &&
-                    self.undecryptable_pkts.len() < MAX_UNDECRYPTABLE_PACKETS &&
-                    !self.is_established()
+                if hdr.ty == Type::ZeroRTT
+                    && self.undecryptable_pkts.len() < MAX_UNDECRYPTABLE_PACKETS
+                    && !self.is_established()
                 {
                     // Buffer 0-RTT packets when the required read key is not
                     // available yet, and process them later.
@@ -4022,7 +4093,7 @@ impl<F: BufFactory> Connection<F> {
                     self.undecryptable_pkts.push_back((pkt, *info));
                     /* PATCH */
                     // change return type
-                    return Ok((pkt_len,recv_frames));
+                    return Ok((pkt_len, recv_frames));
                 }
 
                 let e = drop_pkt_on_err(
@@ -4065,9 +4136,9 @@ impl<F: BufFactory> Connection<F> {
         // Check for key update.
         let mut aead_next = None;
 
-        if self.handshake_confirmed &&
-            hdr.ty != Type::ZeroRTT &&
-            hdr.key_phase != self.key_phase
+        if self.handshake_confirmed
+            && hdr.ty != Type::ZeroRTT
+            && hdr.key_phase != self.key_phase
         {
             // Check if this packet arrived before key update.
             if let Some(key_update) = self.crypto_ctx[epoch]
@@ -4241,6 +4312,15 @@ impl<F: BufFactory> Connection<F> {
             recv_frames.push(FrameWithPkn {
                 frame: frame.clone(),
                 pkn: pn,
+                packet_type: match hdr.ty {
+                    Type::Initial => "initial",
+                    Type::Retry => "retry",
+                    Type::Handshake => "handshake",
+                    Type::ZeroRTT => "0rtt",
+                    Type::VersionNegotiation => "version_negotiation",
+                    Type::Short => "short",
+                }
+                .to_string(),
             });
 
             qlog_with_type!(QLOG_PACKET_RX, self.qlog, _q, {
@@ -4296,8 +4376,14 @@ impl<F: BufFactory> Connection<F> {
         });
 
         if let Some(e) = frame_processing_err {
-            // Any frame error is terminal, so now just return.
-            return Err(e);
+            // Keep already-decoded frames visible to the caller even when
+            // later frame processing fails, otherwise measurement code can
+            // miss frames (for example a PR preceding an invalid frame).
+            trace!(
+                "{} keeping decoded frames despite frame processing error: {:?}",
+                self.trace_id,
+                e
+            );
         }
 
         // Only log the remote transport parameters once the connection is
@@ -4324,7 +4410,7 @@ impl<F: BufFactory> Connection<F> {
                 match acked {
                     frame::Frame::Ping {
                         mtu_probe: Some(mtu_probe),
-                    } =>
+                    } => {
                         if let Some(pmtud) = p.pmtud.as_mut() {
                             trace!(
                                 "{} pmtud probe acked; probe size {:?}",
@@ -4365,7 +4451,8 @@ impl<F: BufFactory> Connection<F> {
                                 p.recovery
                                     .pmtud_update_max_datagram_size(current_mtu);
                             }
-                        },
+                        }
+                    },
 
                     frame::Frame::ACK { ranges, .. } => {
                         // Stop acknowledging packets less than or equal to the
@@ -4503,9 +4590,9 @@ impl<F: BufFactory> Connection<F> {
             // Did the peer migrated to another path?
             let active_path_id = self.paths.get_active_path_id()?;
 
-            if self.is_server &&
-                recv_pid != active_path_id &&
-                self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num == pn
+            if self.is_server
+                && recv_pid != active_path_id
+                && self.pkt_num_spaces[epoch].largest_rx_non_probing_pkt_num == pn
             {
                 self.on_peer_migrated(recv_pid, self.disable_dcid_reuse, now)?;
             }
@@ -4526,6 +4613,22 @@ impl<F: BufFactory> Connection<F> {
         self.recv_bytes += read as u64;
         self.paths.get_mut(recv_pid)?.recv_bytes += read as u64;
 
+        if mercuriuzz_quiche_log_enabled("MERCURIUZZ_QUICHE_RX_LOG") {
+            info!(
+                "quiche rx: type={:?} epoch={:?} read={} ack_eliciting={} probing={} established={} handshake_completed={} recv_pkts={} from={} to={}",
+                hdr.ty,
+                epoch,
+                read,
+                ack_elicited,
+                probing,
+                self.is_established(),
+                self.handshake_completed,
+                self.recv_count,
+                info.from,
+                info.to,
+            );
+        }
+
         // An Handshake packet has been received from the client and has been
         // successfully processed, so we can drop the initial state and consider
         // the client's address to be verified.
@@ -4537,9 +4640,8 @@ impl<F: BufFactory> Connection<F> {
 
         self.ack_eliciting_sent = false;
 
-        Ok((read,recv_frames))
+        Ok((read, recv_frames))
     }
-
 
     /// Writes a single QUIC packet to be sent to the peer.
     ///
@@ -4706,7 +4808,6 @@ impl<F: BufFactory> Connection<F> {
         if self.local_error.is_none() {
             self.do_handshake(now)?;
         }
-
         // Forwarding the error value here could confuse
         // applications, as they may not expect getting a `recv()`
         // error when calling `send()`.
@@ -4799,8 +4900,8 @@ impl<F: BufFactory> Connection<F> {
             }
 
             // Don't coalesce packets that must go on different paths.
-            if !(from.is_some() && to.is_some()) &&
-                self.get_send_path_id(from, to)? != send_pid
+            if !(from.is_some() && to.is_some())
+                && self.get_send_path_id(from, to)? != send_pid
             {
                 break;
             }
@@ -4836,7 +4937,7 @@ impl<F: BufFactory> Connection<F> {
         Ok((done, info))
     }
 
-    fn send_single(
+    pub fn send_single(
         &mut self, out: &mut [u8], send_pid: usize, has_initial: bool,
         now: Instant,
     ) -> Result<(Type, usize)> {
@@ -4926,11 +5027,12 @@ impl<F: BufFactory> Connection<F> {
                         stream_id,
                         error_code,
                         final_size,
-                    } =>
+                    } => {
                         if self.streams.get(stream_id).is_some() {
                             self.streams
                                 .insert_reset(stream_id, error_code, final_size);
-                        },
+                        }
+                    },
 
                     // Retransmit HANDSHAKE_DONE only if it hasn't been acked at
                     // least once already.
@@ -4958,11 +5060,12 @@ impl<F: BufFactory> Connection<F> {
 
                     frame::Frame::Ping {
                         mtu_probe: Some(failed_probe),
-                    } =>
+                    } => {
                         if let Some(pmtud) = p.pmtud.as_mut() {
                             trace!("pmtud probe dropped: {failed_probe}");
                             pmtud.failed_probe(failed_probe);
-                        },
+                        }
+                    },
 
                     _ => (),
                 }
@@ -4971,6 +5074,8 @@ impl<F: BufFactory> Connection<F> {
 
         let is_app_limited = self.delivery_rate_check_if_app_limited();
         let n_paths = self.paths.len();
+        let conn_established = self.is_established();
+        let handshake_completed = self.handshake_completed;
         let path = self.paths.get_mut(send_pid)?;
         let flow_control = &mut self.flow_control;
         let pkt_space = &mut self.pkt_num_spaces[epoch];
@@ -5123,19 +5228,17 @@ impl<F: BufFactory> Connection<F> {
         // generate an ACK (if there's anything to ACK) since we're going to
         // send a packet with PING anyways, even if we haven't received anything
         // ACK eliciting.
-        if pkt_space.recv_pkt_need_ack.len() > 0 &&
-            (pkt_space.ack_elicited || ack_elicit_required) &&
-            (!is_closing ||
-                (pkt_type == Type::Handshake &&
-                    self.local_error
-                        .as_ref()
-                        .is_some_and(|le| le.is_app))) &&
-            path.active()
+        if pkt_space.recv_pkt_need_ack.len() > 0
+            && (pkt_space.ack_elicited || ack_elicit_required)
+            && (!is_closing
+                || (pkt_type == Type::Handshake
+                    && self.local_error.as_ref().is_some_and(|le| le.is_app)))
+            && path.active()
         {
             let ack_delay = pkt_space.largest_rx_pkt_time.elapsed();
 
-            let ack_delay = ack_delay.as_micros() as u64 /
-                2_u64
+            let ack_delay = ack_delay.as_micros() as u64
+                / 2_u64
                     .pow(self.local_transport_params.ack_delay_exponent as u32);
 
             let frame = frame::Frame::ACK {
@@ -5300,9 +5403,9 @@ impl<F: BufFactory> Connection<F> {
         if pkt_type == Type::Short && !is_closing && path.active() {
             // Create HANDSHAKE_DONE frame.
             // self.should_send_handshake_done() but without the need to borrow
-            if self.handshake_completed &&
-                !self.handshake_done_sent &&
-                self.is_server
+            if self.handshake_completed
+                && !self.handshake_done_sent
+                && self.is_server
             {
                 let frame = frame::Frame::HandshakeDone;
 
@@ -5398,8 +5501,8 @@ impl<F: BufFactory> Connection<F> {
             }
 
             // Create MAX_DATA frame as needed.
-            if self.almost_full &&
-                flow_control.max_data() < flow_control.max_data_next()
+            if self.almost_full
+                && flow_control.max_data() < flow_control.max_data_next()
             {
                 // Autotune the connection window size.
                 flow_control.autotune_window(now, path.recovery.rtt());
@@ -5543,10 +5646,10 @@ impl<F: BufFactory> Connection<F> {
         }
 
         // Create CRYPTO frame.
-        if crypto_ctx.crypto_stream.is_flushable() &&
-            left > frame::MAX_CRYPTO_OVERHEAD &&
-            !is_closing &&
-            path.active()
+        if crypto_ctx.crypto_stream.is_flushable()
+            && left > frame::MAX_CRYPTO_OVERHEAD
+            && !is_closing
+            && path.active()
         {
             let crypto_off = crypto_ctx.crypto_stream.send.off_front();
 
@@ -5625,11 +5728,11 @@ impl<F: BufFactory> Connection<F> {
         }
 
         // Create DATAGRAM frame.
-        if (pkt_type == Type::Short || pkt_type == Type::ZeroRTT) &&
-            left > frame::MAX_DGRAM_OVERHEAD &&
-            !is_closing &&
-            path.active() &&
-            do_dgram
+        if (pkt_type == Type::Short || pkt_type == Type::ZeroRTT)
+            && left > frame::MAX_DGRAM_OVERHEAD
+            && !is_closing
+            && path.active()
+            && do_dgram
         {
             if let Some(max_dgram_payload) = max_dgram_len {
                 while let Some(len) = self.dgram_send_queue.peek_front_len() {
@@ -5707,11 +5810,11 @@ impl<F: BufFactory> Connection<F> {
         }
 
         // Create a single STREAM frame for the first stream that is flushable.
-        if (pkt_type == Type::Short || pkt_type == Type::ZeroRTT) &&
-            left > frame::MAX_STREAM_OVERHEAD &&
-            !is_closing &&
-            path.active() &&
-            !dgram_emitted
+        if (pkt_type == Type::Short || pkt_type == Type::ZeroRTT)
+            && left > frame::MAX_STREAM_OVERHEAD
+            && !is_closing
+            && path.active()
+            && !dgram_emitted
         {
             while let Some(priority_key) = self.streams.peek_flushable() {
                 let stream_id = priority_key.id;
@@ -5826,10 +5929,10 @@ impl<F: BufFactory> Connection<F> {
         // - if we've sent too many non ack-eliciting packets without having
         // sent an ACK eliciting one; OR
         // - the application requested an ack-eliciting frame be sent.
-        if (ack_elicit_required || path.needs_ack_eliciting) &&
-            !ack_eliciting &&
-            left >= 1 &&
-            !is_closing
+        if (ack_elicit_required || path.needs_ack_eliciting)
+            && !ack_eliciting
+            && left >= 1
+            && !is_closing
         {
             let frame = frame::Frame::Ping { mtu_probe: None };
 
@@ -5844,9 +5947,9 @@ impl<F: BufFactory> Connection<F> {
             path.recovery.ping_sent(epoch);
         }
 
-        if !has_data &&
-            !dgram_emitted &&
-            cwnd_available > frame::MAX_STREAM_OVERHEAD
+        if !has_data
+            && !dgram_emitted
+            && cwnd_available > frame::MAX_STREAM_OVERHEAD
         {
             path.recovery.on_app_limited();
         }
@@ -5866,9 +5969,9 @@ impl<F: BufFactory> Connection<F> {
         // as Initial always requires padding.
         //
         // 2) this is a probing packet towards an unvalidated peer address.
-        if (has_initial || !path.validated()) &&
-            pkt_type == Type::Short &&
-            left >= 1
+        if (has_initial || !path.validated())
+            && pkt_type == Type::Short
+            && left >= 1
         {
             let frame = frame::Frame::Padding { len: left };
 
@@ -6022,6 +6125,43 @@ impl<F: BufFactory> Connection<F> {
         self.sent_bytes += written as u64;
         path.sent_count += 1;
         path.sent_bytes += written as u64;
+
+        match hdr_ty {
+            Type::Initial => self.sent_initial_count += 1,
+            Type::Handshake => self.sent_handshake_count += 1,
+            Type::ZeroRTT => self.sent_0rtt_count += 1,
+            Type::Retry => self.sent_retry_count += 1,
+            Type::Short => {
+                self.sent_short_count += 1;
+                if sent_pkt_has_data {
+                    self.sent_short_data_count += 1;
+                } else {
+                    self.sent_short_control_count += 1;
+                }
+            },
+            Type::VersionNegotiation => (),
+        }
+
+        if ack_eliciting {
+            self.sent_ack_eliciting_count += 1;
+        }
+
+        if mercuriuzz_quiche_log_enabled("MERCURIUZZ_QUICHE_TX_LOG") {
+            info!(
+                "quiche tx: type={:?} epoch={:?} written={} ack_eliciting={} in_flight={} has_data={} cwnd={} cwnd_available={} established={} handshake_completed={} sent_pkts={}",
+                hdr_ty,
+                epoch,
+                written,
+                ack_eliciting,
+                in_flight,
+                sent_pkt_has_data,
+                path.recovery.cwnd(),
+                path.recovery.cwnd_available(),
+                conn_established,
+                handshake_completed,
+                self.sent_count
+            );
+        }
 
         if self.dgram_send_queue.byte_size() > path.recovery.cwnd_available() {
             path.recovery.update_app_limited(false);
@@ -6192,8 +6332,8 @@ impl<F: BufFactory> Connection<F> {
         &mut self, stream_id: u64, out: &mut [u8],
     ) -> Result<(usize, bool)> {
         // We can't read on our own unidirectional streams.
-        if !stream::is_bidi(stream_id) &&
-            stream::is_local(stream_id, self.is_server)
+        if !stream::is_bidi(stream_id)
+            && stream::is_local(stream_id, self.is_server)
         {
             return Err(Error::InvalidStreamState(stream_id));
         }
@@ -6375,8 +6515,8 @@ impl<F: BufFactory> Connection<F> {
         SND: FnOnce(&mut stream::Stream<F>, B, usize, bool) -> Result<(usize, R)>,
     {
         // We can't write on the peer's unidirectional streams.
-        if !stream::is_bidi(stream_id) &&
-            !stream::is_local(stream_id, self.is_server)
+        if !stream::is_bidi(stream_id)
+            && !stream::is_local(stream_id, self.is_server)
         {
             return Err(Error::InvalidStreamState(stream_id));
         }
@@ -6488,6 +6628,19 @@ impl<F: BufFactory> Connection<F> {
 
         self.tx_buffered += sent;
 
+        if mercuriuzz_quiche_log_enabled("MERCURIUZZ_QUICHE_STREAM_LOG") {
+            info!(
+                "quiche stream_send: stream_id={} requested={} buffered={} fin={} tx_cap_remaining={} tx_buffered={} blocked_by_cap={}",
+                stream_id,
+                len,
+                sent,
+                fin,
+                self.tx_cap,
+                self.tx_buffered,
+                blocked_by_cap
+            );
+        }
+
         qlog_with_type!(QLOG_DATA_MV, self.qlog, q, {
             let ev_data = EventData::DataMoved(qlog::events::quic::DataMoved {
                 stream_id: Some(stream_id),
@@ -6588,17 +6741,17 @@ impl<F: BufFactory> Connection<F> {
         &mut self, stream_id: u64, direction: Shutdown, err: u64,
     ) -> Result<()> {
         // Don't try to stop a local unidirectional stream.
-        if direction == Shutdown::Read &&
-            stream::is_local(stream_id, self.is_server) &&
-            !stream::is_bidi(stream_id)
+        if direction == Shutdown::Read
+            && stream::is_local(stream_id, self.is_server)
+            && !stream::is_bidi(stream_id)
         {
             return Err(Error::InvalidStreamState(stream_id));
         }
 
         // Don't try to reset a remote unidirectional stream.
-        if direction == Shutdown::Write &&
-            !stream::is_local(stream_id, self.is_server) &&
-            !stream::is_bidi(stream_id)
+        if direction == Shutdown::Write
+            && !stream::is_local(stream_id, self.is_server)
+            && !stream::is_bidi(stream_id)
         {
             return Err(Error::InvalidStreamState(stream_id));
         }
@@ -6733,12 +6886,13 @@ impl<F: BufFactory> Connection<F> {
 
                     // Return the stream to the application immediately if it's
                     // stopped.
-                    Err(_) =>
+                    Err(_) => {
                         return {
                             self.streams.remove_writable(&priority_key);
 
                             Some(priority_key.id)
-                        },
+                        }
+                    },
                 };
 
                 if cmp::min(self.tx_cap, cap) >= stream.send_lowat {
@@ -7176,8 +7330,8 @@ impl<F: BufFactory> Connection<F> {
 
         let active_path = self.paths.get_active_mut()?;
 
-        if self.dgram_send_queue.byte_size() >
-            active_path.recovery.cwnd_available()
+        if self.dgram_send_queue.byte_size()
+            > active_path.recovery.cwnd_available()
         {
             active_path.recovery.update_app_limited(false);
         }
@@ -7206,8 +7360,8 @@ impl<F: BufFactory> Connection<F> {
 
         let active_path = self.paths.get_active_mut()?;
 
-        if self.dgram_send_queue.byte_size() >
-            active_path.recovery.cwnd_available()
+        if self.dgram_send_queue.byte_size()
+            > active_path.recovery.cwnd_available()
         {
             active_path.recovery.update_app_limited(false);
         }
@@ -7531,9 +7685,9 @@ impl<F: BufFactory> Connection<F> {
             // Ensures that a Source Connection ID has been dedicated to this
             // path, or a free one is available. This is only required if the
             // host uses non-zero length Source Connection IDs.
-            if !self.ids.zero_length_scid() &&
-                path.active_scid_seq.is_none() &&
-                self.ids.available_scids() == 0
+            if !self.ids.zero_length_scid()
+                && path.active_scid_seq.is_none()
+                && self.ids.available_scids() == 0
             {
                 return Err(Error::OutOfIdentifiers);
             }
@@ -7675,9 +7829,9 @@ impl<F: BufFactory> Connection<F> {
 
         let active_path_id = self.paths.get_active_path_id()?;
 
-        if active_path_dcid_seq == dcid_seq &&
-            self.ids.lowest_available_dcid_seq().is_none() &&
-            !self
+        if active_path_dcid_seq == dcid_seq
+            && self.ids.lowest_available_dcid_seq().is_none()
+            && !self
                 .paths
                 .iter()
                 .any(|(pid, p)| pid != active_path_id && p.usable())
@@ -8100,6 +8254,14 @@ impl<F: BufFactory> Connection<F> {
         Stats {
             recv: self.recv_count,
             sent: self.sent_count,
+            sent_initial_pkts: self.sent_initial_count,
+            sent_handshake_pkts: self.sent_handshake_count,
+            sent_0rtt_pkts: self.sent_0rtt_count,
+            sent_retry_pkts: self.sent_retry_count,
+            sent_short_pkts: self.sent_short_count,
+            sent_short_data_pkts: self.sent_short_data_count,
+            sent_short_control_pkts: self.sent_short_control_count,
+            sent_ack_eliciting_pkts: self.sent_ack_eliciting_count,
             lost: self.lost_count,
             spurious_lost: self.spurious_lost_count,
             retrans: self.retrans_count,
@@ -8167,8 +8329,9 @@ impl<F: BufFactory> Connection<F> {
     ) -> Result<()> {
         // Validate initial_source_connection_id.
         match &peer_params.initial_source_connection_id {
-            Some(v) if v != &self.destination_id() =>
-                return Err(Error::InvalidTransportParam),
+            Some(v) if v != &self.destination_id() => {
+                return Err(Error::InvalidTransportParam)
+            },
 
             Some(_) => (),
 
@@ -8180,15 +8343,17 @@ impl<F: BufFactory> Connection<F> {
         // Validate original_destination_connection_id.
         if let Some(odcid) = &self.odcid {
             match &peer_params.original_destination_connection_id {
-                Some(v) if v != odcid =>
-                    return Err(Error::InvalidTransportParam),
+                Some(v) if v != odcid => {
+                    return Err(Error::InvalidTransportParam)
+                },
 
                 Some(_) => (),
 
                 // original_destination_connection_id must be
                 // sent by the server.
-                None if !self.is_server =>
-                    return Err(Error::InvalidTransportParam),
+                None if !self.is_server => {
+                    return Err(Error::InvalidTransportParam)
+                },
 
                 None => (),
             }
@@ -8197,8 +8362,9 @@ impl<F: BufFactory> Connection<F> {
         // Validate retry_source_connection_id.
         if let Some(rscid) = &self.rscid {
             match &peer_params.retry_source_connection_id {
-                Some(v) if v != rscid =>
-                    return Err(Error::InvalidTransportParam),
+                Some(v) if v != rscid => {
+                    return Err(Error::InvalidTransportParam)
+                },
 
                 Some(_) => (),
 
@@ -8322,8 +8488,8 @@ impl<F: BufFactory> Connection<F> {
                         );
                     }
 
-                    if ex_data.local_transport_params !=
-                        self.local_transport_params
+                    if ex_data.local_transport_params
+                        != self.local_transport_params
                     {
                         self.streams.set_max_streams_bidi(
                             ex_data
@@ -8429,7 +8595,9 @@ impl<F: BufFactory> Connection<F> {
                     // not be able to decrypt handshake packets yet.
                     packet::Epoch::Handshake
                         if self.crypto_ctx[packet::Epoch::Initial].has_keys() =>
-                        return Ok(Type::Initial),
+                    {
+                        return Ok(Type::Initial)
+                    },
 
                     _ => (),
                 };
@@ -8470,29 +8638,30 @@ impl<F: BufFactory> Connection<F> {
         // If there are flushable, almost full or blocked streams, use the
         // Application epoch.
         let send_path = self.paths.get(send_pid)?;
-        if (self.is_established() || self.is_in_early_data()) &&
-            (self.should_send_handshake_done() ||
-                self.almost_full ||
-                self.blocked_limit.is_some() ||
-                self.dgram_send_queue.has_pending() ||
-                self.local_error
+        if (self.is_established() || self.is_in_early_data())
+            && (self.should_send_handshake_done()
+                || self.almost_full
+                || self.blocked_limit.is_some()
+                || self.dgram_send_queue.has_pending()
+                || self
+                    .local_error
                     .as_ref()
-                    .is_some_and(|conn_err| conn_err.is_app) ||
-                self.streams.should_update_max_streams_bidi() ||
-                self.streams.should_update_max_streams_uni() ||
-                self.streams.has_flushable() ||
-                self.streams.has_almost_full() ||
-                self.streams.has_blocked() ||
-                self.streams.has_reset() ||
-                self.streams.has_stopped() ||
-                self.ids.has_new_scids() ||
-                self.ids.has_retire_dcids() ||
-                send_path
+                    .is_some_and(|conn_err| conn_err.is_app)
+                || self.streams.should_update_max_streams_bidi()
+                || self.streams.should_update_max_streams_uni()
+                || self.streams.has_flushable()
+                || self.streams.has_almost_full()
+                || self.streams.has_blocked()
+                || self.streams.has_reset()
+                || self.streams.has_stopped()
+                || self.ids.has_new_scids()
+                || self.ids.has_retire_dcids()
+                || send_path
                     .pmtud
                     .as_ref()
-                    .is_some_and(|pmtud| pmtud.should_probe()) ||
-                send_path.needs_ack_eliciting ||
-                send_path.probing_required())
+                    .is_some_and(|pmtud| pmtud.should_probe())
+                || send_path.needs_ack_eliciting
+                || send_path.probing_required())
         {
             // Only clients can send 0-RTT packets.
             if !self.is_server && self.is_in_early_data() {
@@ -8540,9 +8709,9 @@ impl<F: BufFactory> Connection<F> {
                     ))
                     .ok_or(Error::InvalidFrame)?;
 
-                if epoch == packet::Epoch::Handshake ||
-                    (epoch == packet::Epoch::Application &&
-                        self.is_established())
+                if epoch == packet::Epoch::Handshake
+                    || (epoch == packet::Epoch::Application
+                        && self.is_established())
                 {
                     self.peer_verified_initial_address = true;
                 }
@@ -8613,8 +8782,8 @@ impl<F: BufFactory> Connection<F> {
                 final_size,
             } => {
                 // Peer can't send on our unidirectional streams.
-                if !stream::is_bidi(stream_id) &&
-                    stream::is_local(stream_id, self.is_server)
+                if !stream::is_bidi(stream_id)
+                    && stream::is_local(stream_id, self.is_server)
                 {
                     return Err(Error::InvalidStreamState(stream_id));
                 }
@@ -8664,8 +8833,8 @@ impl<F: BufFactory> Connection<F> {
                 error_code,
             } => {
                 // STOP_SENDING on a receive-only stream is a fatal error.
-                if !stream::is_local(stream_id, self.is_server) &&
-                    !stream::is_bidi(stream_id)
+                if !stream::is_local(stream_id, self.is_server)
+                    && !stream::is_bidi(stream_id)
                 {
                     return Err(Error::InvalidStreamState(stream_id));
                 }
@@ -8745,15 +8914,16 @@ impl<F: BufFactory> Connection<F> {
             frame::Frame::CryptoHeader { .. } => unreachable!(),
 
             // TODO: implement stateless retry
-            frame::Frame::NewToken { .. } =>
+            frame::Frame::NewToken { .. } => {
                 if self.is_server {
                     return Err(Error::InvalidPacket);
-                },
+                }
+            },
 
             frame::Frame::Stream { stream_id, data } => {
                 // Peer can't send on our unidirectional streams.
-                if !stream::is_bidi(stream_id) &&
-                    stream::is_local(stream_id, self.is_server)
+                if !stream::is_bidi(stream_id)
+                    && stream::is_local(stream_id, self.is_server)
                 {
                     return Err(Error::InvalidStreamState(stream_id));
                 }
@@ -8820,8 +8990,8 @@ impl<F: BufFactory> Connection<F> {
 
             frame::Frame::MaxStreamData { stream_id, max } => {
                 // Peer can't receive on its own unidirectional streams.
-                if !stream::is_bidi(stream_id) &&
-                    !stream::is_local(stream_id, self.is_server)
+                if !stream::is_bidi(stream_id)
+                    && !stream::is_local(stream_id, self.is_server)
                 {
                     return Err(Error::InvalidStreamState(stream_id));
                 }
@@ -8981,18 +9151,16 @@ impl<F: BufFactory> Connection<F> {
                             // host is willing to.
                             path.active_scid_seq = None;
                         }
-                    }
+                    },
                     Ok(None) => {
-
                         debug!("retire_scid returns None So nothing to do");
-                    }
-                    Err(e) =>
-                    {
-                        debug!("retire_scid returns err:{:?} So nothing to do",e);
-                        
-                    }
-
-
+                    },
+                    Err(e) => {
+                        debug!(
+                            "retire_scid returns err:{:?} So nothing to do",
+                            e
+                        );
+                    },
                 };
             },
 
@@ -9120,8 +9288,8 @@ impl<F: BufFactory> Connection<F> {
         // If the transport parameter is set to 0, then the respective endpoint
         // decided to disable the idle timeout. If both are disabled we should
         // not set any timeout.
-        if self.local_transport_params.max_idle_timeout == 0 &&
-            self.peer_transport_params.max_idle_timeout == 0
+        if self.local_transport_params.max_idle_timeout == 0
+            && self.peer_transport_params.max_idle_timeout == 0
         {
             return None;
         }
@@ -9197,10 +9365,10 @@ impl<F: BufFactory> Connection<F> {
             .map(|(_, p)| p.recovery.cwnd_available())
             .sum();
 
-        ((self.tx_buffered + self.dgram_send_queue_byte_size()) < cwin_available) &&
-            (self.tx_data.saturating_sub(self.last_tx_data)) <
-                cwin_available as u64 &&
-            cwin_available > 0
+        ((self.tx_buffered + self.dgram_send_queue_byte_size()) < cwin_available)
+            && (self.tx_data.saturating_sub(self.last_tx_data))
+                < cwin_available as u64
+            && cwin_available > 0
     }
 
     fn set_initial_dcid(
@@ -9605,6 +9773,30 @@ pub struct Stats {
     /// The number of QUIC packets sent.
     pub sent: usize,
 
+    /// The number of sent Initial packets.
+    pub sent_initial_pkts: usize,
+
+    /// The number of sent Handshake packets.
+    pub sent_handshake_pkts: usize,
+
+    /// The number of sent 0-RTT packets.
+    pub sent_0rtt_pkts: usize,
+
+    /// The number of sent Retry packets.
+    pub sent_retry_pkts: usize,
+
+    /// The number of sent 1-RTT short-header packets.
+    pub sent_short_pkts: usize,
+
+    /// The number of sent 1-RTT packets carrying application data.
+    pub sent_short_data_pkts: usize,
+
+    /// The number of sent 1-RTT packets carrying no application data.
+    pub sent_short_control_pkts: usize,
+
+    /// The number of sent ack-eliciting packets.
+    pub sent_ack_eliciting_pkts: usize,
+
     /// The number of QUIC packets that were lost.
     pub lost: usize,
 
@@ -9663,8 +9855,14 @@ impl std::fmt::Debug for Stats {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "recv={} sent={} lost={} retrans={}",
-            self.recv, self.sent, self.lost, self.retrans,
+            "recv={} sent={} short={} short_data={} short_control={} lost={} retrans={}",
+            self.recv,
+            self.sent,
+            self.sent_short_pkts,
+            self.sent_short_data_pkts,
+            self.sent_short_control_pkts,
+            self.lost,
+            self.retrans,
         )?;
 
         write!(

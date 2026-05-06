@@ -437,14 +437,14 @@ pub(crate) fn hkdf_extract(
             std::ptr::null_mut(),
         );
 
-        if EVP_PKEY_derive_init(ctx) != 1 ||
-            EVP_PKEY_CTX_set_hkdf_mode(
+        if EVP_PKEY_derive_init(ctx) != 1
+            || EVP_PKEY_CTX_set_hkdf_mode(
                 ctx, 1, // EVP_PKEY_HKDF_MODE_EXTRACT_ONLY
-            ) != 1 ||
-            EVP_PKEY_CTX_set_hkdf_md(ctx, prf) != 1 ||
-            EVP_PKEY_CTX_set1_hkdf_salt(ctx, salt.as_ptr(), salt.len()) != 1 ||
-            EVP_PKEY_CTX_set1_hkdf_key(ctx, secret.as_ptr(), secret.len()) != 1 ||
-            EVP_PKEY_derive(ctx, out.as_mut_ptr(), &mut out_len) != 1
+            ) != 1
+            || EVP_PKEY_CTX_set_hkdf_md(ctx, prf) != 1
+            || EVP_PKEY_CTX_set1_hkdf_salt(ctx, salt.as_ptr(), salt.len()) != 1
+            || EVP_PKEY_CTX_set1_hkdf_key(ctx, secret.as_ptr(), secret.len()) != 1
+            || EVP_PKEY_derive(ctx, out.as_mut_ptr(), &mut out_len) != 1
         {
             EVP_PKEY_CTX_free(ctx);
             return Err(Error::CryptoFail);
@@ -469,14 +469,14 @@ pub(crate) fn hkdf_expand(
             std::ptr::null_mut(),
         );
 
-        if EVP_PKEY_derive_init(ctx) != 1 ||
-            EVP_PKEY_CTX_set_hkdf_mode(
+        if EVP_PKEY_derive_init(ctx) != 1
+            || EVP_PKEY_CTX_set_hkdf_mode(
                 ctx, 2, // EVP_PKEY_HKDF_MODE_EXPAND_ONLY
-            ) != 1 ||
-            EVP_PKEY_CTX_set_hkdf_md(ctx, prf) != 1 ||
-            EVP_PKEY_CTX_set1_hkdf_key(ctx, secret.as_ptr(), secret.len()) != 1 ||
-            EVP_PKEY_CTX_add1_hkdf_info(ctx, info.as_ptr(), info.len()) != 1 ||
-            EVP_PKEY_derive(ctx, out.as_mut_ptr(), &mut out_len) != 1
+            ) != 1
+            || EVP_PKEY_CTX_set_hkdf_md(ctx, prf) != 1
+            || EVP_PKEY_CTX_set1_hkdf_key(ctx, secret.as_ptr(), secret.len()) != 1
+            || EVP_PKEY_CTX_add1_hkdf_info(ctx, info.as_ptr(), info.len()) != 1
+            || EVP_PKEY_derive(ctx, out.as_mut_ptr(), &mut out_len) != 1
         {
             EVP_PKEY_CTX_free(ctx);
             return Err(Error::CryptoFail);

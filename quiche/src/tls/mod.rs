@@ -346,7 +346,7 @@ impl Drop for Context {
         unsafe { SSL_CTX_free(self.as_mut_ptr()) }
     }
 }
-
+#[derive(Debug)]
 pub struct Handshake {
     /// Raw pointer
     ptr: *mut SSL,
@@ -536,7 +536,6 @@ impl Handshake {
         self.set_ex_data(*QUICHE_EX_DATA_INDEX, ex_data)?;
         let rc = unsafe { SSL_do_handshake(self.as_mut_ptr()) };
         self.set_ex_data::<Connection>(*QUICHE_EX_DATA_INDEX, ptr::null())?;
-
         self.set_transport_error(ex_data, rc);
         self.map_result_ssl(rc)
     }
@@ -763,12 +762,15 @@ extern "C" fn set_read_secret(
 
     let space = match level {
         crypto::Level::Initial => &mut ex_data.crypto_ctx[packet::Epoch::Initial],
-        crypto::Level::ZeroRTT =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Application],
-        crypto::Level::Handshake =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Handshake],
-        crypto::Level::OneRTT =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Application],
+        crypto::Level::ZeroRTT => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Application]
+        },
+        crypto::Level::Handshake => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Handshake]
+        },
+        crypto::Level::OneRTT => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Application]
+        },
     };
 
     let aead = match get_cipher_from_ptr(cipher) {
@@ -812,12 +814,15 @@ extern "C" fn set_write_secret(
 
     let space = match level {
         crypto::Level::Initial => &mut ex_data.crypto_ctx[packet::Epoch::Initial],
-        crypto::Level::ZeroRTT =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Application],
-        crypto::Level::Handshake =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Handshake],
-        crypto::Level::OneRTT =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Application],
+        crypto::Level::ZeroRTT => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Application]
+        },
+        crypto::Level::Handshake => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Handshake]
+        },
+        crypto::Level::OneRTT => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Application]
+        },
     };
 
     let aead = match get_cipher_from_ptr(cipher) {
@@ -863,10 +868,12 @@ extern "C" fn add_handshake_data(
     let space = match level {
         crypto::Level::Initial => &mut ex_data.crypto_ctx[packet::Epoch::Initial],
         crypto::Level::ZeroRTT => unreachable!(),
-        crypto::Level::Handshake =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Handshake],
-        crypto::Level::OneRTT =>
-            &mut ex_data.crypto_ctx[packet::Epoch::Application],
+        crypto::Level::Handshake => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Handshake]
+        },
+        crypto::Level::OneRTT => {
+            &mut ex_data.crypto_ctx[packet::Epoch::Application]
+        },
     };
 
     if space.crypto_stream.send.write(buf, false).is_err() {
@@ -965,8 +972,8 @@ extern "C" fn select_alpn(
                 std::str::from_utf8(expected.as_slice())
             );
 
-            if expected.len() == proto.len() &&
-                expected.as_slice() == proto.as_ref()
+            if expected.len() == proto.len()
+                && expected.as_slice() == proto.as_ref()
             {
                 unsafe {
                     *out = expected.as_slice().as_ptr();

@@ -95,8 +95,8 @@ impl ModeImpl for ProbeRTT {
     ) -> Mode {
         match self.exit_time {
             None => {
-                if congestion_event.bytes_in_flight <=
-                    self.inflight_target(params)
+                if congestion_event.bytes_in_flight
+                    <= self.inflight_target(params)
                 {
                     self.exit_time = Some(
                         congestion_event.event_time + params.probe_rtt_duration,
@@ -104,12 +104,13 @@ impl ModeImpl for ProbeRTT {
                 }
                 Mode::ProbeRTT(self)
             },
-            Some(exit_time) =>
+            Some(exit_time) => {
                 if congestion_event.event_time > exit_time {
                     self.into_probe_bw(event_time, Some(congestion_event), params)
                 } else {
                     Mode::ProbeRTT(self)
-                },
+                }
+            },
         }
     }
 
@@ -128,8 +129,9 @@ impl ModeImpl for ProbeRTT {
     ) -> Mode {
         match self.exit_time {
             None => self.into_probe_bw(now, None, params),
-            Some(exit_time) if now > exit_time =>
-                self.into_probe_bw(now, None, params),
+            Some(exit_time) if now > exit_time => {
+                self.into_probe_bw(now, None, params)
+            },
             Some(_) => Mode::ProbeRTT(self),
         }
     }

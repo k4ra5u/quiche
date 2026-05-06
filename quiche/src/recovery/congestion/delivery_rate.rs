@@ -107,8 +107,8 @@ impl Rate {
 
         // Update info using the newest packet. If rate_sample is not yet
         // initialized, initialize with the first packet.
-        if self.rate_sample.prior_time.is_none() ||
-            pkt.delivered >= self.rate_sample.prior_delivered
+        if self.rate_sample.prior_time.is_none()
+            || pkt.delivered >= self.rate_sample.prior_delivered
         {
             self.rate_sample.prior_delivered = pkt.delivered;
             self.rate_sample.prior_time = Some(pkt.delivered_time);
@@ -152,8 +152,8 @@ impl Rate {
             if !interval.is_zero() {
                 let rate_sample_bandwidth = {
                     let rate_sample_bytes_per_second = (self.rate_sample.delivered
-                        as f64 /
-                        interval.as_secs_f64())
+                        as f64
+                        / interval.as_secs_f64())
                         as u64;
 
                     Bandwidth::from_bytes_per_second(rate_sample_bytes_per_second)
@@ -165,8 +165,8 @@ impl Rate {
                 // - the new rate is higher than the previous value
                 //
                 // [linux] https://github.com/torvalds/linux/commit/eb8329e0a04db0061f714f033b4454326ba147f4
-                if !self.rate_sample.is_app_limited ||
-                    rate_sample_bandwidth > self.rate_sample.bandwidth
+                if !self.rate_sample.is_app_limited
+                    || rate_sample_bandwidth > self.rate_sample.bandwidth
                 {
                     self.update_delivery_rate(rate_sample_bandwidth);
                 }
@@ -514,11 +514,14 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(ack_outcome, OnAckReceivedOutcome {
-            lost_packets: 0,
-            lost_bytes: 0,
-            acked_bytes: mss * packet_count,
-            spurious_losses: 0,
-        });
+        assert_eq!(
+            ack_outcome,
+            OnAckReceivedOutcome {
+                lost_packets: 0,
+                lost_bytes: 0,
+                acked_bytes: mss * packet_count,
+                spurious_losses: 0,
+            }
+        );
     }
 }

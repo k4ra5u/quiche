@@ -31,6 +31,8 @@ libc = { workspace = true }
 log = { workspace = true }
 mio = { workspace = true, features = ["net", "os-poll"] }
 nix = { workspace = true, features = ["net", "socket", "uio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 octets = { workspace = true }
 quiche = { workspace = true }
 ring = { workspace = true }

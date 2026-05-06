@@ -168,12 +168,12 @@ impl Pacer {
             // Reset lumpy_tokens_ if either application or cwnd throttles sending
             // or token runs out.
             self.lumpy_tokens = 1.max(LUMPY_PACING_SIZE.min(
-                (self.sender.get_congestion_window_in_packets() as f64 *
-                    LUMPY_PACING_CWND_FRACTION) as usize,
+                (self.sender.get_congestion_window_in_packets() as f64
+                    * LUMPY_PACING_CWND_FRACTION) as usize,
             ));
 
-            if self.sender.bandwidth_estimate(rtt_stats) <
-                LUMPY_PACING_MIN_BANDWIDTH_KBPS
+            if self.sender.bandwidth_estimate(rtt_stats)
+                < LUMPY_PACING_MIN_BANDWIDTH_KBPS
             {
                 // Below 1.2Mbps, send 1 packet at once, because one full-sized
                 // packet is about 10ms of queueing.

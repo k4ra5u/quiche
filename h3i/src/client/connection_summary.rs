@@ -286,14 +286,14 @@ impl StreamMap {
     }
 
     ///  Not `pub` as users aren't expected to build their own [`StreamMap`]s.
-    pub(crate) fn new(close_trigger_frames: Option<CloseTriggerFrames>) -> Self {
+    pub fn new(close_trigger_frames: Option<CloseTriggerFrames>) -> Self {
         Self {
             close_trigger_frames,
             ..Default::default()
         }
     }
 
-    pub(crate) fn insert(&mut self, stream_id: u64, frame: H3iFrame) {
+    pub fn insert(&mut self, stream_id: u64, frame: H3iFrame) {
         if let Some(expected) = self.close_trigger_frames.as_mut() {
             expected.receive_frame(stream_id, &frame);
         }
@@ -307,9 +307,7 @@ impl StreamMap {
     /// Close a [`quiche::Connection`] with the CONNECTION_CLOSE frame specified
     /// by [`CloseTriggerFrames`]. If no [`CloseTriggerFrames`] exist, this is a
     /// no-op.
-    pub(crate) fn close_due_to_trigger_frames(
-        &self, qconn: &mut quiche::Connection,
-    ) {
+    pub fn close_due_to_trigger_frames(&self, qconn: &mut quiche::Connection) {
         if let Some(ConnectionError {
             is_app,
             error_code,
@@ -342,11 +340,14 @@ impl CloseTriggerFrames {
     /// received, h3i will close the connection with an application-level
     /// CONNECTION_CLOSE frame with error code 0x100.
     pub fn new(frames: Vec<CloseTriggerFrame>) -> Self {
-        Self::new_with_connection_close(frames, ConnectionError {
-            is_app: true,
-            error_code: quiche::h3::WireErrorCode::NoError as u64,
-            reason: b"saw all close trigger frames".to_vec(),
-        })
+        Self::new_with_connection_close(
+            frames,
+            ConnectionError {
+                is_app: true,
+                error_code: quiche::h3::WireErrorCode::NoError as u64,
+                reason: b"saw all close trigger frames".to_vec(),
+            },
+        )
     }
 
     /// Create a new [`CloseTriggerFrames`] with a custom close frame. When all
@@ -618,8 +619,9 @@ mod tests {
 
         stream_map.insert(0, data[0].clone());
         assert!(!stream_map.all_close_trigger_frames_seen());
-        assert_eq!(stream_map.missing_close_trigger_frames().unwrap(), vec![
-            CloseTriggerFrame::new(0, data[1].clone())
-        ]);
+        assert_eq!(
+            stream_map.missing_close_trigger_frames().unwrap(),
+            vec![CloseTriggerFrame::new(0, data[1].clone())]
+        );
     }
 }

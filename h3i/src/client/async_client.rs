@@ -347,13 +347,13 @@ impl ApplicationOverQuic for H3iDriver {
 
         for action in iter {
             match action {
-                Action::SendFrame { .. } |
-                Action::StreamBytes { .. } |
-                Action::ResetStream { .. } |
-                Action::StopSending { .. } |
-                Action::OpenUniStream { .. } |
-                Action::ConnectionClose { .. } |
-                Action::SendHeadersFrame { .. } => {
+                Action::SendFrame { .. }
+                | Action::StreamBytes { .. }
+                | Action::ResetStream { .. }
+                | Action::StopSending { .. }
+                | Action::OpenUniStream { .. }
+                | Action::ConnectionClose { .. }
+                | Action::SendHeadersFrame { .. } => {
                     if self.should_fire() {
                         // Reset the fire time such that the next action will
                         // still fire.

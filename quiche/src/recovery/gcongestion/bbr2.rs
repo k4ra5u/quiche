@@ -337,10 +337,12 @@ impl From<BbrBwLoReductionStrategy> for BwLoMode {
     fn from(value: BbrBwLoReductionStrategy) -> Self {
         match value {
             BbrBwLoReductionStrategy::Default => BwLoMode::Default,
-            BbrBwLoReductionStrategy::MinRttReduction =>
-                BwLoMode::MinRttReduction,
-            BbrBwLoReductionStrategy::InflightReduction =>
-                BwLoMode::InflightReduction,
+            BbrBwLoReductionStrategy::MinRttReduction => {
+                BwLoMode::MinRttReduction
+            },
+            BbrBwLoReductionStrategy::InflightReduction => {
+                BwLoMode::InflightReduction
+            },
             BbrBwLoReductionStrategy::CwndReduction => BwLoMode::CwndReduction,
         }
     }
@@ -536,15 +538,15 @@ impl BBRv2 {
             return;
         }
 
-        if self.params.decrease_startup_pacing_at_end_of_round &&
-            network_model.pacing_gain() < self.params.startup_pacing_gain
+        if self.params.decrease_startup_pacing_at_end_of_round
+            && network_model.pacing_gain() < self.params.startup_pacing_gain
         {
             self.pacing_rate = target_rate;
             return;
         }
 
-        if self.params.bw_lo_mode != BwLoMode::Default &&
-            network_model.loss_events_in_round() > 0
+        if self.params.bw_lo_mode != BwLoMode::Default
+            && network_model.loss_events_in_round() > 0
         {
             self.pacing_rate = target_rate;
             return;
@@ -646,8 +648,8 @@ impl CongestionControl for BBRv2 {
 
         // Number of mode changes allowed for this congestion event.
         let mut mode_changes_allowed = MAX_MODE_CHANGES_PER_CONGESTION_EVENT;
-        while mode_changes_allowed > 0 &&
-            self.mode.do_on_congestion_event(
+        while mode_changes_allowed > 0
+            && self.mode.do_on_congestion_event(
                 prior_in_flight,
                 event_time,
                 acked_packets,
@@ -674,8 +676,8 @@ impl CongestionControl for BBRv2 {
         if !self.last_sample_is_app_limited {
             self.has_non_app_limited_sample = true;
         }
-        if congestion_event.bytes_in_flight == 0 &&
-            self.params.avoid_unnecessary_probe_rtt
+        if congestion_event.bytes_in_flight == 0
+            && self.params.avoid_unnecessary_probe_rtt
         {
             self.on_enter_quiescence(event_time);
         }
@@ -715,14 +717,14 @@ impl CongestionControl for BBRv2 {
     }
 
     fn update_mss(&mut self, new_mss: usize) {
-        self.cwnd_limits.hi = (self.cwnd_limits.hi as u64 * new_mss as u64 /
-            self.mss as u64) as usize;
-        self.cwnd_limits.lo = (self.cwnd_limits.lo as u64 * new_mss as u64 /
-            self.mss as u64) as usize;
+        self.cwnd_limits.hi = (self.cwnd_limits.hi as u64 * new_mss as u64
+            / self.mss as u64) as usize;
+        self.cwnd_limits.lo = (self.cwnd_limits.lo as u64 * new_mss as u64
+            / self.mss as u64) as usize;
         self.cwnd =
             (self.cwnd as u64 * new_mss as u64 / self.mss as u64) as usize;
-        self.initial_cwnd = (self.initial_cwnd as u64 * new_mss as u64 /
-            self.mss as u64) as usize;
+        self.initial_cwnd = (self.initial_cwnd as u64 * new_mss as u64
+            / self.mss as u64) as usize;
         if self.params.scale_pacing_rate_by_mss {
             self.pacing_rate =
                 self.pacing_rate * (new_mss as f64 / self.mss as f64);

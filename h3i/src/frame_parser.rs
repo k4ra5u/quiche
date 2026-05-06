@@ -36,6 +36,7 @@ use crate::frame::H3iFrame;
 
 /// Max stream state size in bytes (2MB).
 const MAX_STREAM_STATE_SIZE: usize = 2_000_000;
+const MAX_QPACK_DECODED_HEADER_SECTION_SIZE: u64 = MAX_STREAM_STATE_SIZE as u64;
 
 #[derive(Debug, Default, PartialEq, Eq)]
 enum FrameState {
@@ -76,7 +77,7 @@ pub enum FrameParseResult {
 ///
 /// There are various success and failure criteria, see `try_parse_frame()` for
 /// specific guidance.
-pub(crate) struct FrameParser {
+pub struct FrameParser {
     ty: Option<u64>,
     len: Option<u64>,
 
@@ -89,7 +90,7 @@ pub(crate) struct FrameParser {
 }
 
 impl FrameParser {
-    pub(crate) fn new(stream_id: u64) -> Self {
+    pub fn new(stream_id: u64) -> Self {
         Self {
             stream_id,
             ..Default::default()
@@ -122,10 +123,11 @@ impl FrameParser {
         loop {
             let (len, fin) = match self.try_fill_buffer(qconn, self.stream_id) {
                 Ok((l, f)) => (l, f),
-                Err(H3Error::TransportError(quiche::Error::StreamReset(err))) =>
+                Err(H3Error::TransportError(quiche::Error::StreamReset(err))) => {
                     return Ok(FrameParseResult::Interrupted(
                         InterruptCause::ResetStream(err),
-                    )),
+                    ))
+                },
                 Err(e) => return Err(e),
             };
 
@@ -248,6 +250,12 @@ impl FrameParser {
         // payload size of a GREASE frame), so we need to limit the maximum
         // size to avoid DoS.
         if expected_len > MAX_STREAM_STATE_SIZE {
+            log::warn!(
+                "rejecting oversized h3i stream parser state: stream={} expected_len={} limit={}",
+                self.stream_id,
+                expected_len,
+                MAX_STREAM_STATE_SIZE
+            );
             return Err(quiche::h3::Error::ExcessiveLoad);
         }
 
@@ -268,7 +276,8 @@ impl FrameParser {
 
     fn set_frame_len(&mut self, len: u64) -> Result<()> {
         self.len = Some(len);
-        self.state_transition(FrameState::Val, len as usize)?;
+        let len = usize::try_from(len).map_err(|_| H3Error::ExcessiveLoad)?;
+        self.state_transition(FrameState::Val, len)?;
 
         Ok(())
     }
@@ -283,8 +292,14 @@ impl FrameParser {
         match qframe {
             QFrame::Headers { ref header_block } => {
                 let mut qpack_decoder = quiche::h3::qpack::Decoder::new();
-                let headers =
-                    qpack_decoder.decode(header_block, u64::MAX).unwrap();
+                let headers = qpack_decoder
+                    .decode(header_block, MAX_QPACK_DECODED_HEADER_SECTION_SIZE)
+                    .map_err(|e| match e {
+                        quiche::h3::qpack::Error::HeaderListTooLarge => {
+                            H3Error::ExcessiveLoad
+                        },
+                        _ => H3Error::QpackDecompressionFailed,
+                    })?;
 
                 Ok(H3iFrame::Headers(headers.into()))
             },
@@ -344,10 +359,13 @@ mod tests {
             .expect("first");
 
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -367,10 +385,23 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[10; 11], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
+    }
+
+    #[test]
+    fn excessive_len_is_rejected() {
+        let mut parser = FrameParser::new(0);
+
+        assert_eq!(
+            parser.set_frame_len((MAX_STREAM_STATE_SIZE as u64) + 1),
+            Err(H3Error::ExcessiveLoad)
+        );
     }
 
     #[test]
@@ -390,10 +421,13 @@ mod tests {
         assert_eq!(res, FrameParseResult::Retry);
 
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -418,10 +452,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[64, 5, 1, 2, 3, 4, 5], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -446,10 +483,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[5, 1, 2, 3, 4, 5], 0, false)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: false
+            }
+        );
     }
 
     #[test]
@@ -470,10 +510,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[57; 10], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -495,10 +538,13 @@ mod tests {
         assert_eq!(res, FrameParseResult::Retry);
 
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -522,10 +568,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[64; 65], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -549,10 +598,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[0; 64], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -575,16 +627,22 @@ mod tests {
         assert_eq!(res, FrameParseResult::Retry);
 
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(first),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(first),
+                fin: false
+            }
+        );
 
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(second),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(second),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -605,10 +663,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[2, 3, 4, 5], 0, false)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: false
+            }
+        );
     }
 
     #[test]
@@ -624,10 +685,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[0, 5, 1, 2, 3, 4, 5, 0], 0, true)
             .expect("first");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: false
+            }
+        );
 
         let res = parser.try_parse_frame(&mut s.pipe.server);
         assert_eq!(res, Err(H3Error::TransportError(quiche::Error::Done)));
@@ -655,15 +719,21 @@ mod tests {
         )
         .expect("first");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(first),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(first),
+                fin: false
+            }
+        );
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(second),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(second),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -689,15 +759,21 @@ mod tests {
         )
         .expect("first");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(first),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(first),
+                fin: false
+            }
+        );
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(second),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(second),
+                fin: false
+            }
+        );
 
         let res = parser.try_parse_frame(&mut s.pipe.server);
         assert_eq!(res, Err(H3Error::TransportError(quiche::Error::Done)));
@@ -708,10 +784,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[2, 3], 0, true)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(third),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(third),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -730,27 +809,36 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[0, 3, 1, 2, 3], 0, true)
             .expect("first");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(first.clone()),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(first.clone()),
+                fin: true
+            }
+        );
 
         parser = FrameParser::new(4);
         s.send_arbitrary_stream_data_client(&[0, 5, 1, 2, 3, 4, 5], 4, false)
             .expect("second");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(second),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(second),
+                fin: false
+            }
+        );
 
         s.send_arbitrary_stream_data_client(&[0, 3, 1, 2, 3], 4, true)
             .expect("third");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(first),
-            fin: true
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(first),
+                fin: true
+            }
+        );
     }
 
     #[test]
@@ -781,10 +869,13 @@ mod tests {
         s.send_arbitrary_stream_data_client(&[0, 5, 1, 2, 3, 4, 5], 0, false)
             .expect("first");
         let res = parser.try_parse_frame(&mut s.pipe.server).unwrap();
-        assert_eq!(res, FrameParseResult::FrameParsed {
-            h3i_frame: H3iFrame::QuicheH3(expected),
-            fin: false
-        });
+        assert_eq!(
+            res,
+            FrameParseResult::FrameParsed {
+                h3i_frame: H3iFrame::QuicheH3(expected),
+                fin: false
+            }
+        );
 
         s.pipe
             .client
