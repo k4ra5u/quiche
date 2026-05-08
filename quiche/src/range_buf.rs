@@ -246,7 +246,7 @@ impl Serialize for RangeBuf {
         &self, serializer: S,
     ) -> std::result::Result<<S as Serializer>::Ok, <S as Serializer>::Error>
     {
-        let mut state = serializer.serialize_struct("RangeBuf", 6)?;
+        let mut state = serializer.serialize_struct("RangeBuf", 7)?;
         let mut data = self.data.as_ref().to_vec();
         state.serialize_field("data", &data)?;
         state.serialize_field("start", &self.start)?;
@@ -334,7 +334,7 @@ impl<'de> Deserialize<'de> for RangeBuf {
                 let mut len = None;
                 let mut off = None;
                 let mut fin = None;
-                let mut _bf = None;
+                let mut _bf: Option<PhantomData<DefaultBufFactory>> = None;
                 while let Some(key) = map.next_key()? {
                     match key {
                         Field::Data => {
