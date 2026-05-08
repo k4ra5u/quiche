@@ -17,7 +17,7 @@ const STREAM_ID: u64 = 0;
 /// body that is only 4 bytes long. This verifies https://datatracker.ietf.org/doc/html/rfc9114#section-4.1.2-3 for
 /// cloudflare-quic.com.
 fn main() {
-    std::env::set_var("SSLKEYLOGFILE", "/media/john/Data/key.log");
+    std::env::set_var("SSLKEYLOGFILE", "key.log");
     let config = Config::new()
         .with_host_port("k4ra5u.xx:32440".to_string())
         .with_idle_timeout(2000)
